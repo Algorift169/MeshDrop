@@ -1,0 +1,12 @@
+groq
+speechrecognition
+pyttsx3
+pyaudio
+pyautogui
+gtts
+edge-tts
+pygame
+psutil
+rapidocr-onnxruntime
+python-dotenv
+pyinstaller
