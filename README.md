@@ -11,6 +11,7 @@ Install Android SDK platform 36 and a Java 17+ JDK, then set `ANDROID_HOME`.
 
 ```sh
 make app
+make test
 make erun
 make logs
 make clean

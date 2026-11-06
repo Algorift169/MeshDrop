@@ -12,6 +12,7 @@
 | Command | Behavior |
 | --- | --- |
 | `make app` | Assemble the debug APK and copy it to `build/MeshDrop.apk`. |
+| `make test` | Run Bash smoke checks for app structure/features and build the debug APK. |
 | `make install` | Build and install the APK to the ADB-selected device. |
 | `make run` | Build, install, and launch MeshDrop on the ADB-selected device. |
 | `make erun` | Build, start the configured emulator if no emulator is connected, wait for boot, install, and launch the app. |
