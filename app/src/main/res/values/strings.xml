@@ -3,10 +3,11 @@
     <string name="app_name">MeshDrop</string>
     <string name="mesh_title">Your nearby mesh</string>
     <string name="mesh_subtitle">Discover devices around you, privately.</string>
+    <string name="switch_to_light_mode">Switch to light mode</string>
+    <string name="switch_to_dark_mode">Switch to dark mode</string>
     <string name="radar_content_description">Empty mesh radar showing this device and discovery rings</string>
     <string name="this_device">THIS DEVICE</string>
     <string name="discovery_unavailable">Discovery is not available yet</string>
-    <string name="discovery_description">Nearby MeshDrop devices will appear here when discovery is implemented.</string>
     <string name="chat_title">Chats</string>
     <string name="chat_subtitle">Conversations saved on this device.</string>
     <string name="no_conversations">No conversations yet</string>
@@ -35,7 +36,6 @@
     <string name="bio_label">Bio</string>
     <string name="bio_hint">A little about you</string>
     <string name="device_label">Device name</string>
-    <string name="device_hint">Name this device on your mesh</string>
     <string name="phone_label">Phone number (optional)</string>
     <string name="phone_hint">Not required for MeshDrop</string>
     <string name="edit">Edit</string>

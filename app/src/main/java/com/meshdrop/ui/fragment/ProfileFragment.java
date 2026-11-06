@@ -35,7 +35,6 @@ public class ProfileFragment extends Fragment {
     private static final String KEY_PROFILE_PICTURE = "profile_picture";
     private static final String KEY_NAME = "name";
     private static final String KEY_BIO = "bio";
-    private static final String KEY_DEVICE_NAME = "device_name";
     private static final String KEY_PHONE = "phone";
     private final ActivityResultLauncher<String[]> profilePicturePicker =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onPictureSelected);
@@ -70,10 +69,8 @@ public class ProfileFragment extends Fragment {
                 R.string.bio_label, R.string.bio_hint, KEY_BIO, "",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                         | InputType.TYPE_TEXT_FLAG_MULTI_LINE, true);
-        bindEditableField(view, preferences, R.id.profile_device_name_edit,
-                R.id.profile_device_name_value, R.string.device_label, R.string.device_hint,
-                KEY_DEVICE_NAME, Build.MODEL,
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, false);
+        TextView deviceName = view.findViewById(R.id.profile_device_name_value);
+        deviceName.setText(Build.MODEL);
         bindEditableField(view, preferences, R.id.profile_phone_edit, R.id.profile_phone_value,
                 R.string.phone_label, R.string.phone_hint, KEY_PHONE, "",
                 InputType.TYPE_CLASS_PHONE, false);
