@@ -37,6 +37,9 @@ assert_contains() {
 
 manifest="app/src/main/AndroidManifest.xml"
 mesh_layout="app/src/main/res/layout/fragment_mesh.xml"
+chat_layout="app/src/main/res/layout/fragment_chat.xml"
+files_layout="app/src/main/res/layout/fragment_files.xml"
+strings="app/src/main/res/values/strings.xml"
 meshdrop_database="app/src/main/java/com/meshdrop/database/MeshDropDatabase.java"
 conversation_dao="app/src/main/java/com/meshdrop/database/dao/ConversationDao.java"
 message_dao="app/src/main/java/com/meshdrop/database/dao/MessageDao.java"
@@ -51,6 +54,15 @@ assert_contains "$manifest" 'android:name=".ui.activity.MainActivity"' 'launcher
 assert_contains "$manifest" 'android:name="android.intent.action.MAIN"' 'launcher intent is registered'
 assert_contains "$mesh_layout" 'com.meshdrop.ui.RadarView' 'mesh radar is present'
 assert_contains "$mesh_layout" '@+id/theme_toggle' 'mesh theme toggle is present'
+assert_contains "$strings" '<string name="no_conversations">No chats yet</string>' 'chat empty state is explicit'
+assert_contains "$strings" '<string name="no_transfers">No files shared yet</string>' 'files empty state is explicit'
+if grep -Fq 'MaterialCardView' "$chat_layout" || grep -Fq 'MaterialCardView' "$chat_fragment"; then
+    fail 'chat list must not use boxed card containers'
+fi
+if grep -Fq 'MaterialCardView' "$files_layout"; then
+    fail 'files screen must not use a boxed card container'
+fi
+pass 'chat and files lists are unboxed'
 assert_contains "$meshdrop_database" 'DATABASE_NAME = "meshdrop_chats.db"' 'chat database filename is preserved'
 assert_contains "$meshdrop_database" 'DATABASE_VERSION = 1' 'chat database version is preserved'
 assert_contains "$meshdrop_database" 'CREATE INDEX messages_peer_created_at' 'chat message index is defined'
