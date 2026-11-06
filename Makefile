@@ -9,7 +9,7 @@ APK := build/MeshDrop.apk
 GRADLE_APK := build/app/outputs/apk/debug/app-debug.apk
 AVD ?= MeshDrop_Test
 
-.PHONY: app build install run erun clean emulator logs
+.PHONY: app build test install run erun clean emulator logs
 
 app:
 	$(GRADLE) --no-daemon assembleDebug
@@ -17,6 +17,9 @@ app:
 	cp $(GRADLE_APK) $(APK)
 
 build: app
+
+test:
+	bash app/src/test/java/com/meshdrop/smoke_test.sh
 
 install: app
 	$(ADB) install -r $(APK)

@@ -12,6 +12,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -19,9 +20,10 @@ import androidx.fragment.app.Fragment;
 
 import com.google.android.material.card.MaterialCardView;
 import com.meshdrop.R;
-import com.meshdrop.data.ChatDatabase;
-import com.meshdrop.data.ChatDatabase.Conversation;
-import com.meshdrop.data.ChatDatabase.Message;
+import com.meshdrop.data.model.Conversation;
+import com.meshdrop.data.model.Message;
+import com.meshdrop.database.repository.ChatRepository;
+import com.meshdrop.database.repository.ChatRepositoryImpl;
 import com.meshdrop.ui.activity.MainActivity;
 
 import java.util.Date;
@@ -30,7 +32,7 @@ import java.util.List;
 public class ChatFragment extends Fragment {
     public static final String ARG_PEER_ID = "peer_id";
     public static final String ARG_PEER_NAME = "peer_name";
-        private ChatDatabase database;
+        private ChatRepository repository;
 
     @Nullable
     @Override
@@ -39,7 +41,7 @@ public class ChatFragment extends Fragment {
             @Nullable ViewGroup container,
             @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_chat, container, false);
-                database = new ChatDatabase(requireContext());
+                repository = ChatRepositoryImpl.getInstance(requireContext());
         Bundle arguments = getArguments();
                 if (arguments != null && !TextUtils.isEmpty(arguments.getString(ARG_PEER_ID))) {
                         showConversation(view, arguments);
@@ -54,37 +56,45 @@ public class ChatFragment extends Fragment {
                 super.onHiddenChanged(hidden);
                 if (!hidden && getView() != null && !isConversation()) {
                         showConversationList(getView());
-                }
         }
-
-        @Override
-        public void onDestroy() {
-                if (database != null) {
-                        database.close();
-                        database = null;
-                }
-                super.onDestroy();
         }
 
         private void showConversationList(@NonNull View root) {
-                List<Conversation> conversations = database.getConversations();
                 LinearLayout list = root.findViewById(R.id.conversation_list);
                 LinearLayout emptyState = root.findViewById(R.id.empty_state);
                 list.removeAllViews();
-                if (conversations.isEmpty()) {
-                        list.setVisibility(View.GONE);
-                        emptyState.setVisibility(View.VISIBLE);
-                        ((TextView) root.findViewById(R.id.empty_title)).setText(R.string.no_conversations);
-                        ((TextView) root.findViewById(R.id.empty_description))
-                                        .setText(R.string.chat_empty_description);
-                        return;
-                }
+                list.setVisibility(View.GONE);
+                emptyState.setVisibility(View.VISIBLE);
 
-                emptyState.setVisibility(View.GONE);
-                list.setVisibility(View.VISIBLE);
-                for (Conversation conversation : conversations) {
-                        list.addView(createConversationRow(conversation));
-                }
+                repository.getConversations(new ChatRepository.Callback<List<Conversation>>() {
+                        @Override
+                        public void onSuccess(List<Conversation> conversations) {
+                                if (!isCurrentView(root)) {
+                                        return;
+                                }
+                                list.removeAllViews();
+                                if (conversations.isEmpty()) {
+                                        emptyState.setVisibility(View.VISIBLE);
+                                        ((TextView) root.findViewById(R.id.empty_title)).setText(R.string.no_conversations);
+                                        ((TextView) root.findViewById(R.id.empty_description))
+                                                        .setText(R.string.chat_empty_description);
+                                        return;
+                                }
+
+                                emptyState.setVisibility(View.GONE);
+                                list.setVisibility(View.VISIBLE);
+                                for (Conversation conversation : conversations) {
+                                        list.addView(createConversationRow(conversation));
+                                }
+        }
+
+                        @Override
+                        public void onError(@NonNull Exception error) {
+                                if (isCurrentView(root)) {
+                                        showStorageError();
+                                }
+        }
+                });
         }
 
         private View createConversationRow(@NonNull Conversation conversation) {
@@ -143,14 +153,34 @@ public class ChatFragment extends Fragment {
                 root.findViewById(R.id.conversation_panel).setVisibility(View.VISIBLE);
 
                 EditText input = root.findViewById(R.id.message_input);
-                root.findViewById(R.id.send_message).setOnClickListener(button -> {
+                View sendButton = root.findViewById(R.id.send_message);
+                sendButton.setOnClickListener(button -> {
                         String body = input.getText().toString().trim();
-                        if (body.isEmpty()) {
+                        if (body.isEmpty() || !sendButton.isEnabled()) {
                                 return;
-                        }
-                        database.saveMessage(peerId, peerName, body, true, System.currentTimeMillis());
-                        input.setText("");
-                        showMessages(root, peerId);
+        }
+                        sendButton.setEnabled(false);
+                        repository.saveMessage(peerId, peerName, body, true, System.currentTimeMillis(),
+                                        new ChatRepository.Callback<Void>() {
+                                                @Override
+                                                public void onSuccess(Void result) {
+                                                        if (!isCurrentView(root)) {
+                                                                return;
+                                                        }
+                                                        sendButton.setEnabled(true);
+                                                        input.setText("");
+                                                        showMessages(root, peerId);
+                                                }
+
+                                                @Override
+                                                public void onError(@NonNull Exception error) {
+                                                        if (!isCurrentView(root)) {
+                                                                return;
+                                                        }
+                                                        sendButton.setEnabled(true);
+                                                        showStorageError();
+                                                }
+                                        });
                 });
                 showMessages(root, peerId);
         }
@@ -158,24 +188,39 @@ public class ChatFragment extends Fragment {
         private void showMessages(@NonNull View root, @NonNull String peerId) {
                 LinearLayout messages = root.findViewById(R.id.messages_container);
                 messages.removeAllViews();
-                List<Message> conversation = database.getMessages(peerId);
-                if (conversation.isEmpty()) {
-                        TextView empty = new TextView(requireContext());
-                        empty.setText(R.string.conversation_empty_description);
-                        empty.setTextColor(requireContext().getColor(R.color.secondary_text));
-                        empty.setTextSize(14);
-                        empty.setGravity(Gravity.CENTER);
-                        empty.setPadding(dp(16), dp(24), dp(16), dp(24));
-                        messages.addView(empty, new LinearLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-                        return;
-                }
+                repository.getMessages(peerId, new ChatRepository.Callback<List<Message>>() {
+                        @Override
+                        public void onSuccess(List<Message> conversation) {
+                                if (!isCurrentView(root)) {
+                                        return;
+                                }
+                                messages.removeAllViews();
+                                if (conversation.isEmpty()) {
+                                        TextView empty = new TextView(requireContext());
+                                        empty.setText(R.string.conversation_empty_description);
+                                        empty.setTextColor(requireContext().getColor(R.color.secondary_text));
+                                        empty.setTextSize(14);
+                                        empty.setGravity(Gravity.CENTER);
+                                        empty.setPadding(dp(16), dp(24), dp(16), dp(24));
+                                        messages.addView(empty, new LinearLayout.LayoutParams(
+                                                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                                        return;
+                                }
 
-                for (Message message : conversation) {
-                        messages.addView(createMessageBubble(message));
-                }
-                ScrollView scroll = root.findViewById(R.id.messages_scroll);
-                scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+                                for (Message message : conversation) {
+                                        messages.addView(createMessageBubble(message));
+                                }
+                                ScrollView scroll = root.findViewById(R.id.messages_scroll);
+                                scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+        }
+
+                        @Override
+                        public void onError(@NonNull Exception error) {
+                                if (isCurrentView(root)) {
+                                        showStorageError();
+                                }
+        }
+                });
         }
 
         private View createMessageBubble(@NonNull Message message) {
@@ -212,6 +257,14 @@ public class ChatFragment extends Fragment {
                 rowParams.bottomMargin = dp(10);
                 row.setLayoutParams(rowParams);
                 return row;
+        }
+
+        private void showStorageError() {
+                Toast.makeText(requireContext(), R.string.chat_storage_error, Toast.LENGTH_SHORT).show();
+        }
+
+        private boolean isCurrentView(@NonNull View root) {
+                return isAdded() && getView() == root;
         }
 
         private boolean isConversation() {

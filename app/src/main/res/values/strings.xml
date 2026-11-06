@@ -18,6 +18,7 @@
     <string name="back_to_chats">Back to chats</string>
     <string name="message_hint">Write a message</string>
     <string name="send">Send</string>
+    <string name="chat_storage_error">Could not access local chat history.</string>
     <string name="peer">Peer</string>
     <string name="files_title">File transfers</string>
     <string name="files_subtitle">A history of files shared with MeshDrop.</string>
