@@ -2,7 +2,7 @@
 
 ## Current behavior
 
-The Files destination presents an empty state and explanatory copy for future transfer history. It does not select, send, receive, or store files.
+The Files destination is an unboxed list surface intended for shared-file rows. While empty, it says “No files shared yet.” It does not select, send, receive, or store files; no transfer records are currently available to populate the list.
 
 ## Planned integration boundary
 

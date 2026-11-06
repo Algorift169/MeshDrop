@@ -2,7 +2,7 @@
 
 ## Current behavior
 
-The Chats destination displays conversations saved on this device. Opening a conversation shows its stored messages, and the composer saves outgoing text locally. Returning to the Chats list refreshes the conversation previews.
+The Chats destination displays conversations saved on this device as a continuous, unboxed list with an initial avatar, peer name, latest message, and activity time. Opening a row shows its stored messages, and the composer saves outgoing text locally. Returning to the Chats list refreshes the previews. When empty, the screen says “No chats yet.”
 
 Conversations are keyed by peer ID. The thread UI is opened through `MainActivity.openConversation(peerId, displayName)`. At present there is no connected discovery flow that creates a peer conversation, and the composer does not send over a network.
 

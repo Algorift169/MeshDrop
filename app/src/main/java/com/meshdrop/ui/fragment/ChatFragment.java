@@ -3,6 +3,7 @@ package com.meshdrop.ui.fragment;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.text.format.DateUtils;
 import android.text.format.DateFormat;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -18,7 +19,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
-import com.google.android.material.card.MaterialCardView;
 import com.meshdrop.R;
 import com.meshdrop.data.model.Conversation;
 import com.meshdrop.data.model.Message;
@@ -60,62 +60,97 @@ public class ChatFragment extends Fragment {
         }
 
         private void showConversationList(@NonNull View root) {
-                LinearLayout list = root.findViewById(R.id.conversation_list);
+                ScrollView list = root.findViewById(R.id.conversation_list);
+                LinearLayout rows = root.findViewById(R.id.conversation_rows);
                 LinearLayout emptyState = root.findViewById(R.id.empty_state);
-                list.removeAllViews();
+                rows.removeAllViews();
                 list.setVisibility(View.GONE);
                 emptyState.setVisibility(View.VISIBLE);
 
                 repository.getConversations(new ChatRepository.Callback<List<Conversation>>() {
-                        @Override
-                        public void onSuccess(List<Conversation> conversations) {
-                                if (!isCurrentView(root)) {
-                                        return;
-                                }
-                                list.removeAllViews();
-                                if (conversations.isEmpty()) {
-                                        emptyState.setVisibility(View.VISIBLE);
-                                        ((TextView) root.findViewById(R.id.empty_title)).setText(R.string.no_conversations);
-                                        ((TextView) root.findViewById(R.id.empty_description))
-                                                        .setText(R.string.chat_empty_description);
-                                        return;
-                                }
+                    @Override
+                    public void onSuccess(List<Conversation> conversations) {
+                        if (!isCurrentView(root)) {
+                            return;
+                        }
+                        rows.removeAllViews();
+                        if (conversations.isEmpty()) {
+                            emptyState.setVisibility(View.VISIBLE);
+                            ((TextView) root.findViewById(R.id.empty_title)).setText(R.string.no_conversations);
+                            ((TextView) root.findViewById(R.id.empty_description))
+                                    .setText(R.string.chat_empty_description);
+                            return;
+                        }
 
-                                emptyState.setVisibility(View.GONE);
-                                list.setVisibility(View.VISIBLE);
-                                for (Conversation conversation : conversations) {
-                                        list.addView(createConversationRow(conversation));
-                                }
-        }
+                        emptyState.setVisibility(View.GONE);
+                        list.setVisibility(View.VISIBLE);
+                        for (Conversation conversation : conversations) {
+                            rows.addView(createConversationRow(conversation));
+                        }
+                    }
 
-                        @Override
-                        public void onError(@NonNull Exception error) {
-                                if (isCurrentView(root)) {
-                                        showStorageError();
-                                }
-        }
+                    @Override
+                    public void onError(@NonNull Exception error) {
+                        if (isCurrentView(root)) {
+                            showStorageError();
+                        }
+                    }
                 });
-        }
+            }
 
-        private View createConversationRow(@NonNull Conversation conversation) {
-                MaterialCardView card = new MaterialCardView(requireContext());
-                card.setCardBackgroundColor(requireContext().getColor(R.color.card));
-                card.setRadius(dp(14));
-                card.setStrokeColor(requireContext().getColor(R.color.divider));
-                card.setStrokeWidth(dp(1));
-                card.setClickable(true);
-                card.setFocusable(true);
+            private View createConversationRow(@NonNull Conversation conversation) {
+                LinearLayout container = new LinearLayout(requireContext());
+                container.setOrientation(LinearLayout.VERTICAL);
 
-                LinearLayout content = new LinearLayout(requireContext());
-                content.setOrientation(LinearLayout.VERTICAL);
-                content.setPadding(dp(16), dp(14), dp(16), dp(14));
+                LinearLayout row = new LinearLayout(requireContext());
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(4), dp(12), dp(4), dp(12));
+                row.setBackgroundResource(android.R.drawable.list_selector_background);
+                row.setClickable(true);
+                row.setFocusable(true);
+
+                TextView avatar = new TextView(requireContext());
+                avatar.setGravity(Gravity.CENTER);
+                avatar.setText(initialFor(conversation.peerName));
+                avatar.setTextColor(requireContext().getColor(R.color.background));
+                avatar.setTextSize(16);
+                avatar.setTypeface(null, android.graphics.Typeface.BOLD);
+                GradientDrawable avatarBackground = new GradientDrawable();
+                avatarBackground.setShape(GradientDrawable.OVAL);
+                avatarBackground.setColor(requireContext().getColor(R.color.accent));
+                avatar.setBackground(avatarBackground);
+                row.addView(avatar, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+                LinearLayout details = new LinearLayout(requireContext());
+                details.setOrientation(LinearLayout.VERTICAL);
+                LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                detailsParams.leftMargin = dp(12);
+                row.addView(details, detailsParams);
+
+                LinearLayout heading = new LinearLayout(requireContext());
+                heading.setGravity(Gravity.CENTER_VERTICAL);
+                heading.setOrientation(LinearLayout.HORIZONTAL);
+                details.addView(heading);
 
                 TextView name = new TextView(requireContext());
                 name.setText(conversation.peerName);
                 name.setTextColor(requireContext().getColor(R.color.primary_text));
                 name.setTextSize(16);
                 name.setTypeface(null, android.graphics.Typeface.BOLD);
-                content.addView(name);
+                name.setMaxLines(1);
+                name.setEllipsize(TextUtils.TruncateAt.END);
+                heading.addView(name, new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+                TextView time = new TextView(requireContext());
+                time.setText(formatConversationTime(conversation.updatedAt));
+                time.setTextColor(requireContext().getColor(R.color.secondary_text));
+                time.setTextSize(12);
+                LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                timeParams.leftMargin = dp(8);
+                heading.addView(time, timeParams);
 
                 TextView preview = new TextView(requireContext());
                 preview.setText(conversation.lastMessage);
@@ -124,20 +159,39 @@ public class ChatFragment extends Fragment {
                 preview.setMaxLines(1);
                 preview.setEllipsize(TextUtils.TruncateAt.END);
                 LinearLayout.LayoutParams previewParams = new LinearLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                previewParams.topMargin = dp(5);
-                content.addView(preview, previewParams);
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                previewParams.topMargin = dp(4);
+                details.addView(preview, previewParams);
 
-                card.addView(content);
-                LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                cardParams.bottomMargin = dp(10);
-                card.setLayoutParams(cardParams);
-                card.setOnClickListener(clicked ->
-                                ((MainActivity) requireActivity()).openConversation(
-                                                conversation.peerId, conversation.peerName));
-                return card;
-        }
+                row.setContentDescription(getString(R.string.chat_row_description,
+                        conversation.peerName, conversation.lastMessage));
+                row.setOnClickListener(clicked ->
+                        ((MainActivity) requireActivity()).openConversation(
+                                conversation.peerId, conversation.peerName));
+                container.addView(row);
+
+                View divider = new View(requireContext());
+                divider.setBackgroundColor(requireContext().getColor(R.color.divider));
+                LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+                dividerParams.leftMargin = dp(64);
+                container.addView(divider, dividerParams);
+                return container;
+            }
+
+            @NonNull
+            private String initialFor(@NonNull String name) {
+                String trimmed = name.trim();
+                return trimmed.isEmpty() ? "?" : trimmed.substring(0, 1).toUpperCase();
+            }
+
+            @NonNull
+            private String formatConversationTime(long timestamp) {
+                Date date = new Date(timestamp);
+                return DateUtils.isToday(timestamp)
+                        ? DateFormat.getTimeFormat(requireContext()).format(date)
+                        : DateFormat.getDateFormat(requireContext()).format(date);
+            }
 
         private void showConversation(@NonNull View root, @NonNull Bundle arguments) {
                 String peerId = arguments.getString(ARG_PEER_ID, "");

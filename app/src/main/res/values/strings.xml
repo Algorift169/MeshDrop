@@ -10,8 +10,8 @@
     <string name="discovery_unavailable">Discovery is not available yet</string>
     <string name="chat_title">Chats</string>
     <string name="chat_subtitle">Conversations saved on this device.</string>
-    <string name="no_conversations">No conversations yet</string>
-    <string name="chat_empty_description">Conversations with nearby devices will appear here.</string>
+    <string name="no_conversations">No chats yet</string>
+    <string name="chat_empty_description">Your chats will appear here.</string>
     <string name="no_messages_yet">No messages yet</string>
     <string name="conversation_empty_description">Messages you send here are saved on this device.</string>
     <string name="conversation_subtitle">Messages are saved on this device.</string>
@@ -20,10 +20,11 @@
     <string name="send">Send</string>
     <string name="chat_storage_error">Could not access local chat history.</string>
     <string name="peer">Peer</string>
-    <string name="files_title">File transfers</string>
-    <string name="files_subtitle">A history of files shared with MeshDrop.</string>
-    <string name="no_transfers">No transfers yet</string>
-    <string name="files_empty_description">Files shared through MeshDrop will appear here.</string>
+    <string name="files_title">Files</string>
+    <string name="files_subtitle">Shared files will be organized here.</string>
+    <string name="no_transfers">No files shared yet</string>
+    <string name="files_empty_description">Files shared with nearby devices will appear here.</string>
+    <string name="chat_row_description">%1$s. %2$s</string>
     <string name="profile_title">Your profile</string>
     <string name="profile_subtitle">Your identity on the MeshDrop network.</string>
     <string name="profile_picture_description">Profile picture. Tap to choose a photo.</string>
