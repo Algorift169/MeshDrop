@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="background">#0B0F14</color>
-    <color name="surface">#121820</color>
-    <color name="card">#18212B</color>
-    <color name="elevated">#202B36</color>
-    <color name="accent">#35E0A1</color>
-    <color name="accent_secondary">#18B987</color>
-    <color name="primary_text">#F1F5F9</color>
-    <color name="secondary_text">#94A3B8</color>
-    <color name="divider">#293541</color>
-    <color name="radar_ring">#394D58</color>
-    <color name="radar_faint">#2435E0A1</color>
-    <color name="error">#FF5C70</color>
+    <color name="background">#FFFFFF</color>
+    <color name="surface">#F4F6F7</color>
+    <color name="card">#FFFFFF</color>
+    <color name="elevated">#E9EDEF</color>
+    <color name="accent">#137A5A</color>
+    <color name="accent_secondary">#0B6248</color>
+    <color name="primary_text">#101820</color>
+    <color name="secondary_text">#58636E</color>
+    <color name="divider">#D9E0E5</color>
+    <color name="radar_ring">#C3CDD3</color>
+    <color name="radar_faint">#20358A6B</color>
+    <color name="error">#B4233C</color>
+    <color name="pill_background">#E5F4ED</color>
 </resources>
