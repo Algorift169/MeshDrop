@@ -2,6 +2,13 @@ plugins {
     id("com.android.application")
 }
 
+val generatedLauncherResources = layout.buildDirectory.dir("generated/launcherRes")
+val generateLauncherIcon by tasks.registering(Copy::class) {
+    from(layout.projectDirectory.file("assets/icons/meshdropicon.png"))
+    into(generatedLauncherResources.map { it.dir("mipmap-nodpi") })
+    rename { "ic_launcher.jpg" }
+}
+
 android {
     namespace = "com.meshdrop"
     compileSdk = 36
@@ -18,6 +25,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
+
+android.sourceSets.getByName("main").res.srcDir(generatedLauncherResources)
+
+tasks.named("preBuild").configure {
+    dependsOn(generateLauncherIcon)
 }
 
 dependencies {
