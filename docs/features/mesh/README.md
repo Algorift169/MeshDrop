@@ -1,15 +1,23 @@
 # Mesh Screen
 
-## Current behavior
+## Discovery behavior
 
-The Mesh destination contains the `RadarView`, a status pill, and a nearby-distance panel alongside the radar. The panel currently displays “No nearby devices to show yet.” The radar draws the local device marker, rings, and a sweep graphic.
+The Mesh destination uses Nearby Connections to advertise and continuously discover direct peers. Failed starts retry with bounded backoff. A foreground service keeps scanning in the background and shows an ongoing notification. Connected devices exchange public names and peer paths, which `RefreshRadar` renders as a tree. Its refresh button restarts discovery.
 
-## Limitations
+Discovered peers are endpoint-only until the automatic Nearby connection succeeds. Peer names in the tree are not physical distance or GPS measurements.
 
-The radar is a visual placeholder. It does not run Bluetooth, Wi-Fi, or other peer discovery, and the distance panel has no live measurements. The status pill indicates discovery is unavailable.
+## Peer categories
+
+- Discovered peers: endpoints found directly through Nearby.
+- Connected peers: directly discovered endpoints connected automatically for peer-list exchange.
+- Relayed peers: devices learned through a connected peer appear nested in the tree; this shares topology only, not messages or files.
 
 ## Implementation
 
 - Screen: `app/src/main/java/com/meshdrop/ui/fragment/MeshFragment.java`
-- Radar drawing: `app/src/main/java/com/meshdrop/ui/RadarView.java`
+- Peer tree and refresh control: `app/src/main/java/com/meshdrop/ui/RefreshRadar.java`
+- Lifecycle and prerequisites: `app/src/main/java/com/meshdrop/ui/activity/MainActivity.java`
+- Nearby, connection, and endpoint registry: `app/src/main/java/com/meshdrop/discovery/NearbyDiscoveryManager.java`
+- Background lifecycle: `app/src/main/java/com/meshdrop/discovery/DiscoveryForegroundService.java`
 - Layout: `app/src/main/res/layout/fragment_mesh.xml`
+- Detailed guide: [discovery.md](discovery.md)

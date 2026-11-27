@@ -33,7 +33,7 @@
             android:padding="12dp"
             android:src="@drawable/ic_light_mode"
             android:tooltipText="@string/switch_to_light_mode"
-            android:tint="@color/primary_text" />
+            app:tint="@color/primary_text" />
     </LinearLayout>
 
     <TextView
@@ -45,6 +45,7 @@
         android:textSize="14sp" />
 
     <LinearLayout
+        android:id="@+id/discovery_status_container"
         android:layout_width="wrap_content"
         android:layout_height="32dp"
         android:layout_marginTop="16dp"
@@ -60,6 +61,7 @@
             android:background="@drawable/bg_dot" />
 
         <TextView
+            android:id="@+id/discovery_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="7dp"
@@ -87,7 +89,8 @@
             android:orientation="horizontal"
             android:padding="16dp">
 
-            <com.meshdrop.ui.RadarView
+            <com.meshdrop.ui.RefreshRadar
+                android:id="@+id/refresh_radar"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
@@ -106,6 +109,7 @@
                 android:orientation="vertical">
 
                 <TextView
+                    android:id="@+id/discovered_devices_count"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/distance_label"
@@ -114,6 +118,7 @@
                     android:textStyle="bold" />
 
                 <TextView
+                    android:id="@+id/discovered_devices_label"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="5dp"

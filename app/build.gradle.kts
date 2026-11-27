@@ -38,4 +38,6 @@ dependencies {
     implementation("androidx.fragment:fragment:1.8.5")
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.github.yalantis:ucrop:2.2.11")
+    implementation("com.google.android.gms:play-services-nearby:19.3.0")
+    testImplementation("junit:junit:4.13.2")
 }

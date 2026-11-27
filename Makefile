@@ -1,6 +1,10 @@
 GRADLE := ./gradlew
 ANDROID_HOME ?= $(HOME)/Android/Sdk
 export ANDROID_HOME
+ANDROID_USER_HOME ?= $(HOME)/.android
+export ANDROID_USER_HOME
+ANDROID_AVD_HOME ?= $(ANDROID_USER_HOME)/avd
+export ANDROID_AVD_HOME
 ADB ?= $(ANDROID_HOME)/platform-tools/adb
 EMULATOR := $(ANDROID_HOME)/emulator/emulator
 AVDMANAGER ?= $(ANDROID_HOME)/cmdline-tools/latest/bin/avdmanager
@@ -39,6 +43,7 @@ if ! "$(EMULATOR)" -list-avds | grep -Fxq "$(AVD)"; then \
 		rel=$${pkg#"$(ANDROID_HOME)/"}; \
 		sysimg=$$(printf '%s' "$$rel" | tr '/' ';'); \
 		echo "Creating AVD '$(AVD)' with $$sysimg..."; \
+		mkdir -p "$(ANDROID_AVD_HOME)"; \
 		echo no | "$(AVDMANAGER)" create avd -n "$(AVD)" -k "$$sysimg" --force || exit 1; \
 	else \
 		echo "AVD '$(AVD)' not found and no complete system image is installed under $(ANDROID_HOME)/system-images." >&2; \

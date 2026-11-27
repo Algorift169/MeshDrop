@@ -11,6 +11,10 @@ import android.view.View;
 import androidx.annotation.Nullable;
 
 import com.meshdrop.R;
+import com.meshdrop.data.model.DiscoveredDevice;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class RadarView extends View {
     private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -23,6 +27,7 @@ public class RadarView extends View {
     private final int accentColor;
     private final int ringColor;
     private final int faintColor;
+    private final List<DiscoveredDevice> discoveredDevices = new ArrayList<>();
 
     public RadarView(Context context) {
         this(context, null);
@@ -85,6 +90,45 @@ public class RadarView extends View {
         canvas.drawCircle(centerX, centerY, dp(3), dotPaint);
         canvas.drawText(getResources().getString(R.string.this_device),
                 centerX, centerY + dp(40), labelPaint);
+
+        int count = discoveredDevices.size();
+        for (int index = 0; index < count; index++) {
+            DiscoveredDevice device = discoveredDevices.get(index);
+            int hash = endpointHash(device.getEndpointId());
+            double angle = (2.0 * Math.PI * index / Math.max(1, count))
+                    + (hash / 1000.0);
+            float ringFraction = 0.52f + ((Math.abs(hash) % 4) * 0.10f);
+            float markerX = centerX + (float) (Math.cos(angle) * radius * ringFraction);
+            float markerY = centerY + (float) (Math.sin(angle) * radius * ringFraction);
+
+            canvas.drawCircle(markerX, markerY, dp(7), glowPaint);
+            canvas.drawCircle(markerX, markerY, dp(4), dotPaint);
+
+            String name = device.getDeviceName();
+            if (name.length() > 18) {
+                name = name.substring(0, 17) + "...";
+            }
+            canvas.drawText(name, markerX, markerY - dp(10), labelPaint);
+        }
+    }
+
+    public void setDiscoveredDevices(@Nullable List<DiscoveredDevice> devices) {
+        discoveredDevices.clear();
+        if (devices != null) {
+            discoveredDevices.addAll(devices);
+        }
+        invalidate();
+    }
+
+    private int endpointHash(@Nullable String endpointId) {
+        if (endpointId == null || endpointId.isEmpty()) {
+            return 0;
+        }
+        int hash = 0;
+        for (int index = 0; index < endpointId.length(); index++) {
+            hash = 31 * hash + endpointId.charAt(index);
+        }
+        return hash;
     }
 
     private float dp(float value) {

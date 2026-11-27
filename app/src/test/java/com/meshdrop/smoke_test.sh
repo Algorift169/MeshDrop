@@ -49,10 +49,14 @@ chat_fragment="app/src/main/java/com/meshdrop/ui/fragment/ChatFragment.java"
 profile_fragment="app/src/main/java/com/meshdrop/ui/fragment/ProfileFragment.java"
 profile_layout="app/src/main/res/layout/fragment_profile.xml"
 theme_preferences="app/src/main/java/com/meshdrop/ui/activity/ThemePreferences.java"
+nearby_manager="app/src/main/java/com/meshdrop/discovery/NearbyDiscoveryManager.java"
+permission_manager="app/src/main/java/com/meshdrop/discovery/DiscoveryPermissionManager.java"
+refresh_radar="app/src/main/java/com/meshdrop/ui/RefreshRadar.java"
+discovery_service="app/src/main/java/com/meshdrop/discovery/DiscoveryForegroundService.java"
 
 assert_contains "$manifest" 'android:name=".ui.activity.MainActivity"' 'launcher activity is registered'
 assert_contains "$manifest" 'android:name="android.intent.action.MAIN"' 'launcher intent is registered'
-assert_contains "$mesh_layout" 'com.meshdrop.ui.RadarView' 'mesh radar is present'
+assert_contains "$mesh_layout" 'com.meshdrop.ui.RefreshRadar' 'mesh peer tree is present'
 assert_contains "$mesh_layout" '@+id/theme_toggle' 'mesh theme toggle is present'
 assert_contains "$strings" '<string name="no_conversations">No chats yet</string>' 'chat empty state is explicit'
 assert_contains "$strings" '<string name="no_transfers">No files shared yet</string>' 'files empty state is explicit'
@@ -87,6 +91,27 @@ fi
 pass 'device name has no edit control'
 
 assert_contains "$theme_preferences" 'getBoolean(KEY_DARK_MODE, true)' 'dark mode is the default'
+assert_contains "$nearby_manager" 'Strategy.P2P_CLUSTER' 'Nearby discovery uses P2P_CLUSTER'
+assert_contains "$nearby_manager" 'startAdvertising(' 'Nearby advertising is implemented'
+assert_contains "$nearby_manager" 'startDiscovery(' 'Nearby discovery is implemented'
+assert_contains "$nearby_manager" 'onEndpointFound(' 'endpoint discovery callbacks are implemented'
+assert_contains "$nearby_manager" 'onEndpointLost(' 'endpoint loss callbacks are implemented'
+assert_contains "$nearby_manager" 'scheduleRetry()' 'Nearby session failures schedule retries'
+assert_contains "$nearby_manager" 'refreshDiscovery()' 'Nearby session can be refreshed'
+assert_contains "$nearby_manager" 'requestConnection(' 'direct peers are connected for topology exchange'
+assert_contains "$nearby_manager" 'acceptConnection(' 'incoming topology connections are accepted'
+assert_contains "$nearby_manager" 'sendPayload(' 'peer topology is exchanged over Nearby'
+assert_contains "$nearby_manager" 'PeerTopology' 'peer routes are tracked separately from discovery endpoints'
+assert_contains "$refresh_radar" '└── ' 'peer tree uses branch markers'
+assert_contains "$refresh_radar" 'setOnRefreshClickListener' 'peer tree exposes refresh action'
+assert_contains "$discovery_service" 'startForeground(' 'discovery uses a foreground service'
+assert_contains "$discovery_service" 'START_STICKY' 'background discovery service is sticky'
+assert_contains "$manifest" 'FOREGROUND_SERVICE_CONNECTED_DEVICE' 'connected-device foreground service permission is declared'
+assert_contains "$manifest" 'POST_NOTIFICATIONS' 'discovery notification permission is declared'
+assert_contains "$permission_manager" 'NEARBY_WIFI_DEVICES' 'Nearby Wi-Fi runtime permission is handled'
+assert_contains "$manifest" 'BLUETOOTH_SCAN' 'Bluetooth scan permission is declared'
+assert_contains "$manifest" 'BLUETOOTH_ADVERTISE' 'Bluetooth advertise permission is declared'
+assert_contains "$manifest" 'BLUETOOTH_CONNECT' 'Bluetooth connect permission is declared'
 
 if grep -R -Fq -- 'ChatDatabase' app/src/main/java; then
     fail 'obsolete ChatDatabase references remain in app source'
