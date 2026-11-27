@@ -3,17 +3,12 @@ package com.meshdrop.ui;
 import android.content.Context;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
-import android.view.Gravity;
-import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.ImageButton;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.view.ViewCompat;
-
 import com.meshdrop.R;
 import com.meshdrop.data.model.DiscoveredDevice;
 import com.meshdrop.data.model.PeerTreeNode;
@@ -29,7 +24,6 @@ import java.util.Set;
 
 public final class RefreshRadar extends FrameLayout {
     private final TextView treeText;
-    private final ImageButton refreshButton;
     private final List<DiscoveredDevice> devices = new ArrayList<>();
     private final List<PeerTreeNode> peerTreeNodes = new ArrayList<>();
     private String localDeviceName = "This device";
@@ -47,27 +41,19 @@ public final class RefreshRadar extends FrameLayout {
         ScrollView scrollView = new ScrollView(context);
         scrollView.setFillViewport(true);
         LayoutParams scrollParams = new LayoutParams(
-                LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
-        scrollParams.setMargins(dp(4), dp(44), dp(4), dp(4));
+            LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+        scrollParams.setMargins(dp(4), dp(4), dp(4), dp(4));
         addView(scrollView, scrollParams);
 
         treeText = new TextView(context);
         treeText.setTextColor(context.getColor(R.color.primary_text));
         treeText.setTextSize(14);
         treeText.setTypeface(Typeface.MONOSPACE);
-        treeText.setGravity(Gravity.TOP | Gravity.START);
+        treeText.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
         treeText.setPadding(dp(8), dp(8), dp(8), dp(8));
         scrollView.addView(treeText, new ScrollView.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        refreshButton = new ImageButton(context);
-        refreshButton.setImageResource(android.R.drawable.ic_popup_sync);
-        refreshButton.setBackgroundResource(android.R.drawable.btn_default);
-        refreshButton.setColorFilter(context.getColor(R.color.accent));
-        refreshButton.setContentDescription("Refresh discovery using available radios");
-        ViewCompat.setTooltipText(refreshButton, "Refresh discovery using available radios");
-        LayoutParams refreshParams = new LayoutParams(dp(44), dp(44), Gravity.TOP | Gravity.END);
-        addView(refreshButton, refreshParams);
         setContentDescription("Nearby device tree");
         renderTree();
     }
@@ -101,10 +87,6 @@ public final class RefreshRadar extends FrameLayout {
             peerTreeNodes.addAll(nodes);
         }
         renderTree();
-    }
-
-    public void setOnRefreshClickListener(@Nullable OnClickListener listener) {
-        refreshButton.setOnClickListener(listener);
     }
 
     private void renderTree() {

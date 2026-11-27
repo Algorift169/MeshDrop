@@ -16,6 +16,7 @@
     <string name="discovery_stopped">Discovery stopped.</string>
     <string name="discovery_error">Discovery unavailable.</string>
     <string name="discovery_retry">Retry</string>
+    <string name="refresh_discovery">Refresh device discovery</string>
     <string name="devices_discovered_one">1 device discovered.</string>
     <string name="devices_discovered_many">%1$d devices discovered.</string>
     <string name="peers_visible_one">1 peer visible</string>

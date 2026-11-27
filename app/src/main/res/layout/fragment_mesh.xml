@@ -69,6 +69,18 @@
             android:textColor="@color/accent"
             android:textSize="11sp"
             android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/refresh_discovery"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/refresh_discovery"
+                android:padding="7dp"
+                android:src="@android:drawable/ic_popup_sync"
+                android:tooltipText="@string/refresh_discovery"
+                app:tint="@color/accent" />
     </LinearLayout>
 
     <com.google.android.material.card.MaterialCardView

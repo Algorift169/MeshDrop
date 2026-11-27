@@ -80,7 +80,7 @@ public class MeshFragment extends Fragment {
                 ((MainActivity) getActivity()).refreshDiscovery();
             }
         });
-        refreshRadar.setOnRefreshClickListener(button -> {
+        view.findViewById(R.id.refresh_discovery).setOnClickListener(button -> {
             if (getActivity() instanceof MainActivity) {
                 ((MainActivity) getActivity()).refreshDiscovery();
             }

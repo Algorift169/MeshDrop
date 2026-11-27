@@ -103,7 +103,7 @@ assert_contains "$nearby_manager" 'acceptConnection(' 'incoming topology connect
 assert_contains "$nearby_manager" 'sendPayload(' 'peer topology is exchanged over Nearby'
 assert_contains "$nearby_manager" 'PeerTopology' 'peer routes are tracked separately from discovery endpoints'
 assert_contains "$refresh_radar" '└── ' 'peer tree uses branch markers'
-assert_contains "$refresh_radar" 'setOnRefreshClickListener' 'peer tree exposes refresh action'
+assert_contains "$mesh_layout" '@+id/refresh_discovery' 'refresh button sits beside discovery status'
 assert_contains "$discovery_service" 'startForeground(' 'discovery uses a foreground service'
 assert_contains "$discovery_service" 'START_STICKY' 'background discovery service is sticky'
 assert_contains "$manifest" 'FOREGROUND_SERVICE_CONNECTED_DEVICE' 'connected-device foreground service permission is declared'
