@@ -25,6 +25,15 @@ import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 import com.google.android.gms.nearby.connection.Strategy;
 import com.meshdrop.data.model.PeerTreeNode;
 import com.meshdrop.data.model.DiscoveredDevice;
+import com.meshdrop.settings.AnonymousDiscovery;
+import com.meshdrop.settings.AutoAdvertise;
+import com.meshdrop.settings.BatterySaver;
+import com.meshdrop.settings.DeviceVisibility;
+import com.meshdrop.settings.ForceScan;
+import com.meshdrop.settings.ScanInterval;
+import com.meshdrop.settings.SettingsRepository;
+import com.meshdrop.settings.SettingsManager;
+import com.meshdrop.settings.PeerNotifications;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -50,6 +59,7 @@ public final class NearbyDiscoveryManager {
     private final ConnectionsClient connectionsClient;
     private final String serviceId;
     private final Map<String, DiscoveredDevice> devices;
+    private final Map<String, Runnable> staleDeviceRemovals = new ConcurrentHashMap<>();
     private final CopyOnWriteArraySet<DiscoveryCallback> callbacks;
         private final Set<String> pendingEndpoints = Collections.newSetFromMap(
             new ConcurrentHashMap<String, Boolean>());
@@ -68,6 +78,15 @@ public final class NearbyDiscoveryManager {
     private int sessionGeneration;
     private int retryAttempt;
     private Runnable retryRunnable;
+    private Runnable scanCycleRunnable;
+    private Runnable scanWindowFinishRunnable;
+    private Runnable manualScanFinishRunnable;
+    private SettingsRepository settingsRepository;
+    private boolean advertisingAllowed = true;
+    private boolean forceScanEnabled = true;
+    private boolean manualScanActive;
+    private ScanInterval.Mode scanIntervalMode = ScanInterval.Mode.CONTINUOUS;
+    private String activeAdvertisingName;
 
     public NearbyDiscoveryManager(@NonNull Context context) {
         appContext = context.getApplicationContext();
@@ -116,6 +135,10 @@ public final class NearbyDiscoveryManager {
 
     @NonNull
     public String getAdvertisingName() {
+        if (settingsRepository != null
+                && AnonymousDiscovery.isEnabled(settingsRepository)) {
+            return "MeshDrop User";
+        }
         SharedPreferences preferences = appContext.getSharedPreferences("profile", Context.MODE_PRIVATE);
         String name = preferences.getString("name", "");
         if (name != null) {
@@ -167,10 +190,19 @@ public final class NearbyDiscoveryManager {
                         || next == DiscoveryState.ERROR;
             case STARTING:
                 return next == DiscoveryState.DISCOVERING
+                        || next == DiscoveryState.ADVERTISING
                         || next == DiscoveryState.STOPPING
                         || next == DiscoveryState.ERROR;
             case DISCOVERING:
                 return next == DiscoveryState.STOPPING
+                        || next == DiscoveryState.ADVERTISING
+                        || next == DiscoveryState.STARTING
+                        || next == DiscoveryState.ERROR;
+            case ADVERTISING:
+                return next == DiscoveryState.DISCOVERING
+                        || next == DiscoveryState.STOPPING
+                        || next == DiscoveryState.STARTING
+                        || next == DiscoveryState.IDLE
                         || next == DiscoveryState.ERROR;
             case ERROR:
                 return next == DiscoveryState.CHECKING_REQUIREMENTS
@@ -182,24 +214,29 @@ public final class NearbyDiscoveryManager {
     }
 
     public void startAdvertising() {
-        if (advertising || advertisingStarting) return;
+        if (!sessionRequested || !advertisingAllowed || advertising || advertisingStarting) return;
         advertisingStarting = true;
         int generation = sessionGeneration;
         setState(DiscoveryState.STARTING);
         AdvertisingOptions options = new AdvertisingOptions.Builder()
                 .setStrategy(Strategy.P2P_CLUSTER)
                 .build();
+        String requestedName = getAdvertisingName();
 
         try {
             connectionsClient.startAdvertising(
-                    getAdvertisingName(), serviceId, connectionLifecycleCallback, options)
+                    requestedName, serviceId, connectionLifecycleCallback, options)
                     .addOnSuccessListener(unused -> {
-                        if (generation != sessionGeneration || !sessionRequested) {
+                        if (generation != sessionGeneration || !sessionRequested || !advertisingAllowed
+                                || !requestedName.equals(getAdvertisingName())) {
                             connectionsClient.stopAdvertising();
+                            advertisingStarting = false;
+                            if (sessionRequested && advertisingAllowed) restartAdvertising();
                             return;
                         }
                         advertisingStarting = false;
                         advertising = true;
+                        activeAdvertisingName = getAdvertisingName();
                         mainHandler.post(() -> {
                             for (DiscoveryCallback callback : callbacks) {
                                 callback.onAdvertisingStatusChanged(true);
@@ -222,7 +259,8 @@ public final class NearbyDiscoveryManager {
     }
 
     public void startDiscovery() {
-        if (discovering || discoveryStarting) return;
+        if (!sessionRequested || (!forceScanEnabled && !manualScanActive)
+            || discovering || discoveryStarting) return;
         discoveryStarting = true;
         int generation = sessionGeneration;
         DiscoveryOptions options = new DiscoveryOptions.Builder()
@@ -232,8 +270,10 @@ public final class NearbyDiscoveryManager {
         try {
             connectionsClient.startDiscovery(serviceId, endpointDiscoveryCallback, options)
                     .addOnSuccessListener(unused -> {
-                        if (generation != sessionGeneration || !sessionRequested) {
+                        if (generation != sessionGeneration || !sessionRequested
+                                || (!forceScanEnabled && !manualScanActive)) {
                             connectionsClient.stopDiscovery();
+                            discoveryStarting = false;
                             return;
                         }
                         discoveryStarting = false;
@@ -256,34 +296,78 @@ public final class NearbyDiscoveryManager {
 
     public void startPrerequisitesReadySession() {
         sessionRequested = true;
+        settingsRepository = SettingsManager.getInstance(appContext).getRepository();
+        applySettings(settingsRepository);
+    }
+
+    public void applySettings(@NonNull SettingsRepository repository) {
+        settingsRepository = repository;
         peerTopology.setLocalName(getAdvertisingName());
-        if (discovering && advertising) return;
-        if (!discovering && !discoveryStarting && !advertising && !advertisingStarting) {
-            sessionGeneration++;
+        String desiredName = getAdvertisingName();
+        boolean shouldAdvertise = AutoAdvertise.isEnabled(repository)
+                && DeviceVisibility.isEnabled(repository);
+        advertisingAllowed = shouldAdvertise;
+        forceScanEnabled = ForceScan.isEnabled(repository);
+        scanIntervalMode = BatterySaver.isEnabled(repository)
+                ? ScanInterval.Mode.BATTERY_EFFICIENT
+                : ScanInterval.getMode(repository);
+
+        if (!sessionRequested) return;
+        if (advertisingAllowed) {
+            if (advertising && !desiredName.equals(activeAdvertisingName)) {
+                restartAdvertising();
+            } else if (!advertising && !advertisingStarting) {
+                startAdvertising();
+            }
+        } else {
+            stopAdvertisingOnly();
         }
-        setState(DiscoveryState.STARTING);
-        startAdvertising();
-        startDiscovery();
+
+        cancelScanCycle();
+        if (forceScanEnabled) {
+            manualScanActive = false;
+            cancelManualScanFinish();
+            if (!discovering && !discoveryStarting) {
+                startDiscovery();
+            }
+            scheduleScanCycle();
+        } else if (!manualScanActive) {
+            stopDiscoveryOnly();
+        }
+        updateDiscoveryState();
     }
 
     public void refreshDiscovery() {
         sessionRequested = true;
+        if (settingsRepository == null) {
+            settingsRepository = SettingsManager.getInstance(appContext).getRepository();
+        }
+        boolean manual = !ForceScan.isEnabled(settingsRepository);
+        manualScanActive = manual;
         sessionGeneration++;
         int generation = sessionGeneration;
         cancelRetry();
-        advertising = false;
-        discovering = false;
-        advertisingStarting = false;
-        discoveryStarting = false;
         setState(DiscoveryState.STARTING);
-        clearDevices();
+        cancelScanCycle();
+        cancelManualScanFinish();
 
-        connectionsClient.stopAdvertising();
-        connectionsClient.stopDiscovery();
+        stopDiscoveryOnly();
         mainHandler.postDelayed(() -> {
             if (!sessionRequested || generation != sessionGeneration) return;
-            startAdvertising();
             startDiscovery();
+            if (manual) {
+                long duration = scanIntervalMode == ScanInterval.Mode.CONTINUOUS
+                        ? 30_000L
+                        : scanIntervalMode.getActiveDurationMillis();
+                manualScanFinishRunnable = () -> {
+                    manualScanActive = false;
+                    manualScanFinishRunnable = null;
+                    stopDiscoveryOnly();
+                };
+                mainHandler.postDelayed(manualScanFinishRunnable, duration);
+            } else {
+                scheduleScanCycle();
+            }
         }, 250L);
     }
 
@@ -291,6 +375,12 @@ public final class NearbyDiscoveryManager {
         sessionRequested = false;
         sessionGeneration++;
         cancelRetry();
+        cancelScanCycle();
+        cancelManualScanFinish();
+        for (Runnable removal : staleDeviceRemovals.values()) {
+            mainHandler.removeCallbacks(removal);
+        }
+        staleDeviceRemovals.clear();
         advertisingStarting = false;
         discoveryStarting = false;
         if (!advertising && !discovering && devices.isEmpty() && connectedEndpoints.isEmpty()) {
@@ -355,11 +445,12 @@ public final class NearbyDiscoveryManager {
     }
 
     private void updateDiscoveryState() {
-        if (advertising && discovering) {
+        if (discovering) {
             boolean newlyDiscovering = state != DiscoveryState.DISCOVERING;
             cancelRetry();
             retryAttempt = 0;
             setState(DiscoveryState.DISCOVERING);
+            scheduleScanCycle();
             if (newlyDiscovering) {
                 mainHandler.post(() -> {
                     for (DiscoveryCallback callback : callbacks) {
@@ -367,7 +458,129 @@ public final class NearbyDiscoveryManager {
                     }
                 });
             }
+        } else if (advertising) {
+            setState(DiscoveryState.ADVERTISING);
         }
+    }
+
+    private void restartAdvertising() {
+        connectionsClient.stopAdvertising();
+        advertising = false;
+        advertisingStarting = false;
+        activeAdvertisingName = null;
+        mainHandler.postDelayed(() -> {
+            if (sessionRequested && advertisingAllowed) startAdvertising();
+        }, 250L);
+    }
+
+    private void stopAdvertisingOnly() {
+        if (advertising || advertisingStarting) {
+            connectionsClient.stopAdvertising();
+        }
+        advertising = false;
+        advertisingStarting = false;
+        activeAdvertisingName = null;
+        mainHandler.post(() -> {
+            for (DiscoveryCallback callback : callbacks) {
+                callback.onAdvertisingStatusChanged(false);
+            }
+        });
+    }
+
+    private void stopDiscoveryOnly() {
+        if (discovering || discoveryStarting) {
+            connectionsClient.stopDiscovery();
+        }
+        discovering = false;
+        discoveryStarting = false;
+        if (advertising) {
+            setState(DiscoveryState.ADVERTISING);
+        } else if (state == DiscoveryState.DISCOVERING || state == DiscoveryState.STARTING) {
+            setState(DiscoveryState.IDLE);
+        }
+        scheduleStaleDeviceRemoval();
+    }
+
+    private void scheduleScanCycle() {
+        if (!forceScanEnabled || manualScanActive
+                || scanIntervalMode == ScanInterval.Mode.CONTINUOUS
+                || !discovering || scanWindowFinishRunnable != null) {
+            return;
+        }
+        scanWindowFinishRunnable = () -> {
+            scanWindowFinishRunnable = null;
+            if (!sessionRequested || !forceScanEnabled || manualScanActive) return;
+            stopDiscoveryOnly();
+            scanCycleRunnable = () -> {
+                scanCycleRunnable = null;
+                if (!sessionRequested || !forceScanEnabled || manualScanActive) return;
+                startDiscovery();
+            };
+            mainHandler.postDelayed(scanCycleRunnable, scanIntervalMode.getIdleDurationMillis());
+        };
+        mainHandler.postDelayed(scanWindowFinishRunnable,
+                scanIntervalMode.getActiveDurationMillis());
+    }
+
+    private void cancelScanCycle() {
+        if (scanCycleRunnable != null) {
+            mainHandler.removeCallbacks(scanCycleRunnable);
+            scanCycleRunnable = null;
+        }
+        if (scanWindowFinishRunnable != null) {
+            mainHandler.removeCallbacks(scanWindowFinishRunnable);
+            scanWindowFinishRunnable = null;
+        }
+    }
+
+    private void cancelManualScanFinish() {
+        if (manualScanFinishRunnable != null) {
+            mainHandler.removeCallbacks(manualScanFinishRunnable);
+            manualScanFinishRunnable = null;
+        }
+    }
+
+    private void scheduleStaleDeviceRemoval() {
+        for (String endpointId : devices.keySet()) {
+            scheduleStaleDeviceRemoval(endpointId);
+        }
+    }
+
+    private void scheduleStaleDeviceRemoval(@NonNull String endpointId) {
+        Runnable oldRemoval = staleDeviceRemovals.remove(endpointId);
+        if (oldRemoval != null) mainHandler.removeCallbacks(oldRemoval);
+        Runnable removal = () -> {
+            staleDeviceRemovals.remove(endpointId);
+            if (!discovering && !manualScanActive && devices.remove(endpointId) != null) {
+                notifyDeviceRegistryChanged();
+                notifyPeerLost(endpointId);
+            }
+        };
+        staleDeviceRemovals.put(endpointId, removal);
+        mainHandler.postDelayed(removal, 120_000L);
+    }
+
+    private void notifyDeviceRegistryChanged() {
+        List<DiscoveredDevice> snapshot = getDiscoveredDevices();
+        mainHandler.post(() -> {
+            for (DiscoveryCallback callback : callbacks) {
+                callback.onDeviceRegistryChanged(snapshot);
+            }
+        });
+    }
+
+    private void notifyPeerDiscovered(@NonNull String endpointId, @NonNull String deviceName) {
+        SettingsRepository repository = settingsRepository != null
+                ? settingsRepository
+                : SettingsManager.getInstance(appContext).getRepository();
+        PeerNotifications.notifyDiscovered(appContext, repository, endpointId, deviceName);
+    }
+
+    private void notifyPeerLost(@NonNull String endpointId) {
+        SettingsRepository repository = settingsRepository != null
+                ? settingsRepository
+                : SettingsManager.getInstance(appContext).getRepository();
+        PeerNotifications.notifyLost(appContext, repository, endpointId);
     }
 
     private void reportSessionFailure(@NonNull DiscoveryError.Reason reason,
@@ -413,25 +626,38 @@ public final class NearbyDiscoveryManager {
                     String name = endpointInfo.getEndpointName().trim();
                     if (name.isEmpty()) name = "MeshDrop Device";
                     DiscoveredDevice device = new DiscoveredDevice(endpointId, name);
-                    devices.put(endpointId, device);
-                    mainHandler.post(() -> {
-                        for (DiscoveryCallback callback : callbacks) {
-                            callback.onDeviceDiscovered(device);
-                            callback.onDeviceRegistryChanged(getDiscoveredDevices());
-                        }
-                    });
+                    Runnable pendingRemoval = staleDeviceRemovals.remove(endpointId);
+                    if (pendingRemoval != null) mainHandler.removeCallbacks(pendingRemoval);
+                    DiscoveredDevice previous = devices.put(endpointId, device);
+                    if (previous == null) {
+                        mainHandler.post(() -> {
+                            for (DiscoveryCallback callback : callbacks) {
+                                callback.onDeviceDiscovered(device);
+                                callback.onDeviceRegistryChanged(getDiscoveredDevices());
+                            }
+                        });
+                        notifyPeerDiscovered(endpointId, name);
+                    }
                     requestEndpointConnection(endpointId);
                 }
 
                 @Override
                 public void onEndpointLost(@NonNull String endpointId) {
-                    devices.remove(endpointId);
-                    mainHandler.post(() -> {
-                        for (DiscoveryCallback callback : callbacks) {
-                            callback.onDeviceLost(endpointId);
-                            callback.onDeviceRegistryChanged(getDiscoveredDevices());
-                        }
-                    });
+                    if (manualScanActive) {
+                        scheduleStaleDeviceRemoval(endpointId);
+                        return;
+                    }
+                    if (devices.remove(endpointId) != null) {
+                        Runnable pendingRemoval = staleDeviceRemovals.remove(endpointId);
+                        if (pendingRemoval != null) mainHandler.removeCallbacks(pendingRemoval);
+                        mainHandler.post(() -> {
+                            for (DiscoveryCallback callback : callbacks) {
+                                callback.onDeviceLost(endpointId);
+                                callback.onDeviceRegistryChanged(getDiscoveredDevices());
+                            }
+                        });
+                        notifyPeerLost(endpointId);
+                    }
                 }
             };
 

@@ -40,7 +40,6 @@ public final class DiscoveryPermissionManager {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES);
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS);
         }
 
         return permissions.toArray(new String[0]);

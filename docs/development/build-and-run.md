@@ -30,7 +30,7 @@ Gradle module outputs are redirected to the root `build/` directory. The distrib
 
 Discovery uses `com.google.android.gms:play-services-nearby:19.3.0`. Devices must have compatible Google Play Services and run Android 6.0 or newer (the app's `minSdk` is 23).
 
-Relevant permissions include legacy Bluetooth/location permissions on older API levels, Bluetooth scan/advertise/connect permissions on Android 12+, fine/coarse location where required, `NEARBY_WIFI_DEVICES` on Android 13+, and notification permission for the ongoing discovery service. Permissions are requested at runtime and Bluetooth is enabled only through the system confirmation flow.
+Relevant permissions include legacy Bluetooth/location permissions on older API levels, Bluetooth scan/advertise/connect permissions on Android 12+, fine/coarse location where required, and `NEARBY_WIFI_DEVICES` on Android 13+. Notification permission is optional for scanning and is requested when Peer Notifications is enabled. Permissions are requested at runtime and Bluetooth is enabled only through the system confirmation flow.
 
 Discovery runs in a `connectedDevice` foreground service with an ongoing notification. Nearby-connected peers exchange only public display names, random per-install IDs, and bounded peer paths. This supports a peer tree but does not implement message or file routing.
 

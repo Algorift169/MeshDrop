@@ -7,6 +7,7 @@ public enum DiscoveryState {
     ENABLING_BLUETOOTH,
     STARTING,
     DISCOVERING,
+    ADVERTISING,
     STOPPING,
     ERROR
 }

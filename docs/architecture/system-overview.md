@@ -10,6 +10,10 @@
 
 `NearbyDiscoveryManager` advertises and discovers with `Strategy.P2P_CLUSTER` and the application package service ID. It owns a thread-safe endpoint registry, connects to direct peers, and exchanges bounded in-memory peer paths. `MeshFragment` listens only for UI updates, and `RefreshRadar` renders the resulting tree. No database participates in discovery or topology exchange.
 
+## Settings architecture
+
+`SettingsFragment` is opened from the Profile screen below Mesh Overview, preserving the four-item bottom navigation. `SettingsRepository` persists values in `meshdrop_settings`; `SettingsManager` supplies defaults and notifies listeners. The `NearbyDiscoveryManager` applies Force Scan, scan duty cycle, advertising visibility, anonymous public names, battery policy, and peer-notification preference without duplicating Nearby sessions. `RefreshRadar` applies visual animation preferences independently from discovery.
+
 ```mermaid
 flowchart LR
     A[Application startup] --> B[Google Play Services check]
@@ -23,6 +27,10 @@ flowchart LR
     I --> J[Peer topology]
     J --> K[MeshFragment callbacks]
     K --> L[RefreshRadar tree]
+    M[SettingsFragment] --> N[SettingsManager]
+    N --> O[SettingsRepository]
+    N --> P[NearbyDiscoveryManager policies]
+    N --> Q[RefreshRadar animation]
 ```
 
 ## Feature boundaries

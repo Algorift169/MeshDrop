@@ -7,6 +7,11 @@ advertises and discovers peers offline, keeps scanning through a foreground
 service, and exchanges public peer names to render out-of-range peers in a tree.
 Chat/file delivery and multi-hop message routing remain unimplemented.
 
+The Profile screen includes a Settings center for scan behavior, advertising,
+Bluetooth prompts, privacy, battery policy, radar animation, and peer alerts.
+See [docs/features/settings/README.md](docs/features/settings/README.md) for
+defaults and platform limitations.
+
 ## Build and run
 
 Install Android SDK platform 36 and a Java 17+ JDK, then set `ANDROID_HOME`.

@@ -1,9 +1,11 @@
 package com.meshdrop.ui.activity;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -32,6 +34,9 @@ import com.meshdrop.discovery.DiscoveryForegroundService;
 import com.meshdrop.discovery.DiscoveryPermissionManager;
 import com.meshdrop.discovery.DiscoveryState;
 import com.meshdrop.discovery.NearbyDiscoveryManager;
+import com.meshdrop.settings.ForceBluetooth;
+import com.meshdrop.settings.SettingsManager;
+import com.meshdrop.settings.SettingsFragment;
 
 public class MainActivity extends AppCompatActivity {
     private static final String STATE_SELECTED_DESTINATION = "selected_destination";
@@ -45,6 +50,20 @@ public class MainActivity extends AppCompatActivity {
     private boolean bluetoothRequestPending;
     private boolean bluetoothPromptDeclined;
     private boolean permissionRequestDenied;
+    private boolean bluetoothReceiverRegistered;
+    private final BroadcastReceiver bluetoothStateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(android.content.Context context, Intent intent) {
+            if (!BluetoothAdapter.ACTION_STATE_CHANGED.equals(intent.getAction())) return;
+            int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
+            if (state == BluetoothAdapter.STATE_ON || state == BluetoothAdapter.STATE_OFF) {
+                if (state == BluetoothAdapter.STATE_ON) {
+                    bluetoothPromptDeclined = false;
+                }
+                checkPrerequisites();
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -158,10 +177,57 @@ public class MainActivity extends AppCompatActivity {
         showDestination(R.id.nav_chat);
     }
 
+    public void openSettings() {
+        FragmentManager manager = getSupportFragmentManager();
+        FragmentTransaction transaction = manager.beginTransaction();
+        for (Fragment existing : manager.getFragments()) {
+            transaction.hide(existing);
+        }
+        Fragment settings = manager.findFragmentByTag("profile:settings");
+        if (settings == null) {
+            settings = new SettingsFragment();
+            transaction.add(R.id.fragment_container, settings, "profile:settings");
+        } else {
+            transaction.show(settings);
+        }
+        transaction.commit();
+    }
+
+    public void showProfile() {
+        showDestination(R.id.nav_profile);
+    }
+
+    public void onSettingsChanged() {
+        checkPrerequisites();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         checkPrerequisites();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (bluetoothReceiverRegistered) return;
+        IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.registerReceiver(this, bluetoothStateReceiver, filter,
+                    ContextCompat.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(bluetoothStateReceiver, filter);
+        }
+        bluetoothReceiverRegistered = true;
+    }
+
+    @Override
+    protected void onStop() {
+        if (bluetoothReceiverRegistered) {
+            unregisterReceiver(bluetoothStateReceiver);
+            bluetoothReceiverRegistered = false;
+        }
+        super.onStop();
     }
 
     public NearbyDiscoveryManager getDiscoveryManager() {
@@ -222,6 +288,12 @@ public class MainActivity extends AppCompatActivity {
             enabled = false;
         }
         if (!enabled) {
+            if (!SettingsManager.getInstance(getApplicationContext()).isForceBluetoothEnabled()) {
+                reportPrerequisiteError(
+                        DiscoveryError.Reason.BLUETOOTH_DISABLED,
+                        "Bluetooth is disabled. Enable it in Android settings or turn on Force Bluetooth.");
+                return;
+            }
             discoveryManager.setState(DiscoveryState.ENABLING_BLUETOOTH);
             if (bluetoothPromptDeclined) {
                 reportPrerequisiteError(

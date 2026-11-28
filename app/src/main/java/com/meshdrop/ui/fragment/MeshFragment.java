@@ -21,6 +21,7 @@ import com.meshdrop.discovery.DiscoveryState;
 import com.meshdrop.discovery.NearbyDiscoveryManager;
 import com.meshdrop.data.model.DiscoveredDevice;
 import com.meshdrop.data.model.PeerTreeNode;
+import com.meshdrop.settings.SettingsManager;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -28,13 +29,14 @@ import java.util.HashSet;
 import java.util.Set;
 import androidx.core.view.ViewCompat;
 
-public class MeshFragment extends Fragment {
+public class MeshFragment extends Fragment implements SettingsManager.Listener {
     private TextView discoveryStatus;
     private TextView devicesCount;
     private TextView devicesLabel;
     private RefreshRadar refreshRadar;
     private View statusContainer;
     private NearbyDiscoveryManager discoveryManager;
+    private SettingsManager settingsManager;
     private List<DiscoveredDevice> currentDevices = new ArrayList<>();
     private List<PeerTreeNode> currentPeers = new ArrayList<>();
 
@@ -95,6 +97,9 @@ public class MeshFragment extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
+        settingsManager = SettingsManager.getInstance(requireContext());
+        settingsManager.addListener(this);
+        applyRadarSettings();
         if (getActivity() instanceof MainActivity) {
             discoveryManager = ((MainActivity) getActivity()).getDiscoveryManager();
             if (discoveryManager != null) {
@@ -110,7 +115,23 @@ public class MeshFragment extends Fragment {
         if (discoveryManager != null) {
             discoveryManager.unregisterCallback(discoveryCallback);
         }
+        if (settingsManager != null) {
+            settingsManager.removeListener(this);
+        }
         super.onPause();
+    }
+
+    @Override
+    public void onSettingChanged(@NonNull String key) {
+        applyRadarSettings();
+    }
+
+    private void applyRadarSettings() {
+        if (settingsManager != null && refreshRadar != null) {
+            refreshRadar.setRadarAnimationEnabled(
+                    settingsManager.isRadarAnimationEnabled()
+                            && !settingsManager.isBatterySaverEnabled());
+        }
     }
 
     private void updateStatus(@NonNull DiscoveryState state,
@@ -133,6 +154,9 @@ public class MeshFragment extends Fragment {
                 break;
             case DISCOVERING:
                 textResource = R.string.discovery_active;
+                break;
+            case ADVERTISING:
+                textResource = R.string.discovery_advertising_only;
                 break;
             case ERROR:
                 textResource = R.string.discovery_error;

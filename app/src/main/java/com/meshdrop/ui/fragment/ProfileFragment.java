@@ -25,6 +25,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.fragment.app.Fragment;
 
 import com.meshdrop.R;
+import com.meshdrop.ui.activity.MainActivity;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.yalantis.ucrop.UCrop;
 
@@ -82,6 +83,11 @@ public class ProfileFragment extends Fragment {
                 profilePicturePicker.launch(new String[] {"image/*"});
         view.findViewById(R.id.profile_picture).setOnClickListener(choosePicture);
         view.findViewById(R.id.profile_picture_action).setOnClickListener(choosePicture);
+        view.findViewById(R.id.profile_settings_entry).setOnClickListener(button -> {
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).openSettings();
+            }
+        });
         return view;
     }
 

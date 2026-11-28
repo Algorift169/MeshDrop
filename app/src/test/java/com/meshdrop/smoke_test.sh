@@ -53,6 +53,9 @@ nearby_manager="app/src/main/java/com/meshdrop/discovery/NearbyDiscoveryManager.
 permission_manager="app/src/main/java/com/meshdrop/discovery/DiscoveryPermissionManager.java"
 refresh_radar="app/src/main/java/com/meshdrop/ui/RefreshRadar.java"
 discovery_service="app/src/main/java/com/meshdrop/discovery/DiscoveryForegroundService.java"
+settings_manager="app/src/main/java/com/meshdrop/settings/SettingsManager.java"
+settings_fragment="app/src/main/java/com/meshdrop/settings/SettingsFragment.java"
+settings_repository="app/src/main/java/com/meshdrop/settings/SettingsRepository.java"
 
 assert_contains "$manifest" 'android:name=".ui.activity.MainActivity"' 'launcher activity is registered'
 assert_contains "$manifest" 'android:name="android.intent.action.MAIN"' 'launcher intent is registered'
@@ -104,6 +107,15 @@ assert_contains "$nearby_manager" 'sendPayload(' 'peer topology is exchanged ove
 assert_contains "$nearby_manager" 'PeerTopology' 'peer routes are tracked separately from discovery endpoints'
 assert_contains "$refresh_radar" '└── ' 'peer tree uses branch markers'
 assert_contains "$mesh_layout" '@+id/refresh_discovery' 'refresh button sits beside discovery status'
+assert_contains "$profile_layout" '@+id/profile_settings_entry' 'settings entry is on Profile'
+assert_contains "$profile_layout" 'network_section' 'Profile Mesh Overview remains present'
+assert_contains "$settings_repository" 'PREFERENCES_NAME = "meshdrop_settings"' 'settings use a dedicated preference store'
+assert_contains "$settings_manager" 'CopyOnWriteArraySet<Listener>' 'settings listeners are deduplicated'
+assert_contains "$settings_fragment" 'SettingsCategory.DISCOVERY' 'settings are grouped by category'
+assert_contains "$nearby_manager" 'AutoAdvertise.isEnabled(repository)' 'advertising obeys Auto Advertise'
+assert_contains "$nearby_manager" 'DeviceVisibility.isEnabled(repository)' 'advertising obeys Device Visibility'
+assert_contains "$nearby_manager" 'ForceScan.isEnabled(repository)' 'discovery obeys Force Scan'
+assert_contains "$nearby_manager" 'AnonymousDiscovery.isEnabled(settingsRepository)' 'anonymous identity affects public name'
 assert_contains "$discovery_service" 'startForeground(' 'discovery uses a foreground service'
 assert_contains "$discovery_service" 'START_STICKY' 'background discovery service is sticky'
 assert_contains "$manifest" 'FOREGROUND_SERVICE_CONNECTED_DEVICE' 'connected-device foreground service permission is declared'

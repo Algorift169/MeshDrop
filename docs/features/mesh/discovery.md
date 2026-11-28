@@ -12,7 +12,7 @@ Application startup checks Google Play Services, runtime permissions, Bluetooth 
 
 After prerequisites pass, `NearbyDiscoveryManager` simultaneously starts advertising and discovery. `onEndpointFound` creates or updates a temporary `DiscoveredDevice` keyed by endpoint ID. `onEndpointLost` removes it. Devices are kept only in memory.
 
-`DiscoveryForegroundService` owns an ongoing notification and keeps advertising and discovery active while the app is backgrounded. A failed advertising or discovery start is retried with bounded exponential backoff; the delay grows from one second to a maximum of 30 seconds. Fragment navigation does not create a second session. API 33+ also requires notification permission so persistent scanning is visible to the user.
+`DiscoveryForegroundService` owns an ongoing notification and keeps advertising and discovery active while the app is backgrounded. A failed advertising or discovery start is retried with bounded exponential backoff; the delay grows from one second to a maximum of 30 seconds. Fragment navigation does not create a second session. Notification permission is optional for scanning; Android may limit where the foreground notification is shown if notification permission is denied.
 
 The Mesh peer tree includes the local device, direct peers, and advertised peer paths received over connections. Disconnecting a relay removes routes learned through that relay. Its refresh button rechecks prerequisites, stops the current Nearby operations, and restarts advertising and discovery with `P2P_CLUSTER`. Nearby does not expose a maximum-range setting; the operating system selects supported radios and range.
 
@@ -23,7 +23,7 @@ The manifest and permission manager account for API levels:
 - Android 5-9: legacy Bluetooth permissions and coarse location as applicable.
 - Android 10-12: fine location where required.
 - Android 12+: `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE`, and `BLUETOOTH_CONNECT`.
-- Android 13+: `NEARBY_WIFI_DEVICES` and notification permission for the persistent foreground service.
+- Android 13+: `NEARBY_WIFI_DEVICES`. Notification permission is requested separately only if peer alerts are enabled.
 - Wi-Fi state and change permissions support Nearby's local radio management.
 
 Nearby Connections is responsible for radio use. MeshDrop does not silently enable Bluetooth or directly scan for peers.

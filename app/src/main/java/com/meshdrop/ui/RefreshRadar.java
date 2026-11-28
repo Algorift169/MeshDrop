@@ -1,11 +1,15 @@
 package com.meshdrop.ui;
 
 import android.content.Context;
+import android.animation.ValueAnimator;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -24,11 +28,15 @@ import java.util.Set;
 
 public final class RefreshRadar extends FrameLayout {
     private final TextView treeText;
+    private final TextView localDeviceText;
+    private final View localIndicator;
     private final List<DiscoveredDevice> devices = new ArrayList<>();
     private final List<PeerTreeNode> peerTreeNodes = new ArrayList<>();
     private String localDeviceName = "This device";
     private String localPeerId = "local";
     private String emptyMessage = "No directly discovered peers.";
+    private boolean animationEnabled = true;
+    private ValueAnimator indicatorAnimator;
 
     public RefreshRadar(@NonNull Context context) {
         this(context, null);
@@ -45,13 +53,41 @@ public final class RefreshRadar extends FrameLayout {
         scrollParams.setMargins(dp(4), dp(4), dp(4), dp(4));
         addView(scrollView, scrollParams);
 
+        LinearLayout content = new LinearLayout(context);
+        content.setOrientation(LinearLayout.VERTICAL);
+        scrollView.addView(content, new ScrollView.LayoutParams(
+            LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        LinearLayout localRow = new LinearLayout(context);
+        localRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        localRow.setOrientation(LinearLayout.HORIZONTAL);
+        localRow.setPadding(dp(8), dp(8), dp(8), dp(8));
+        content.addView(localRow, new LinearLayout.LayoutParams(
+            LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        localIndicator = new View(context);
+        GradientDrawable indicatorBackground = new GradientDrawable();
+        indicatorBackground.setShape(GradientDrawable.OVAL);
+        indicatorBackground.setColor(context.getColor(R.color.accent));
+        localIndicator.setBackground(indicatorBackground);
+        LinearLayout.LayoutParams indicatorParams = new LinearLayout.LayoutParams(dp(8), dp(8));
+        indicatorParams.rightMargin = dp(8);
+        localRow.addView(localIndicator, indicatorParams);
+
+        localDeviceText = new TextView(context);
+        localDeviceText.setTextColor(context.getColor(R.color.primary_text));
+        localDeviceText.setTextSize(15);
+        localDeviceText.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        localRow.addView(localDeviceText, new LinearLayout.LayoutParams(
+            LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+
         treeText = new TextView(context);
         treeText.setTextColor(context.getColor(R.color.primary_text));
         treeText.setTextSize(14);
         treeText.setTypeface(Typeface.MONOSPACE);
         treeText.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
         treeText.setPadding(dp(8), dp(8), dp(8), dp(8));
-        scrollView.addView(treeText, new ScrollView.LayoutParams(
+        content.addView(treeText, new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         setContentDescription("Nearby device tree");
@@ -60,7 +96,14 @@ public final class RefreshRadar extends FrameLayout {
 
     public void setLocalDeviceName(@NonNull String name) {
         localDeviceName = name.trim().isEmpty() ? "This device" : name.trim();
+        localDeviceText.setText(localDeviceName);
         renderTree();
+    }
+
+    public void setRadarAnimationEnabled(boolean enabled) {
+        if (animationEnabled == enabled) return;
+        animationEnabled = enabled;
+        updateIndicatorAnimation();
     }
 
     public void setLocalPeerId(@NonNull String peerId) {
@@ -90,7 +133,8 @@ public final class RefreshRadar extends FrameLayout {
     }
 
     private void renderTree() {
-        StringBuilder tree = new StringBuilder(localDeviceName);
+        localDeviceText.setText(localDeviceName);
+        StringBuilder tree = new StringBuilder();
         List<PeerTreeNode> visibleNodes = new ArrayList<>(peerTreeNodes);
         Set<String> representedEndpoints = new HashSet<>();
         for (PeerTreeNode node : peerTreeNodes) {
@@ -132,6 +176,45 @@ public final class RefreshRadar extends FrameLayout {
             appendChildren(tree, children, localPeerId, "", new HashSet<>());
         }
         treeText.setText(tree.toString());
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        updateIndicatorAnimation();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        if (indicatorAnimator != null) {
+            indicatorAnimator.cancel();
+            indicatorAnimator = null;
+        }
+        super.onDetachedFromWindow();
+    }
+
+    private void updateIndicatorAnimation() {
+        if (indicatorAnimator != null) {
+            indicatorAnimator.cancel();
+            indicatorAnimator = null;
+        }
+        if (!animationEnabled || !isAttachedToWindow()) {
+            localIndicator.setAlpha(1f);
+            localIndicator.setScaleX(1f);
+            localIndicator.setScaleY(1f);
+            return;
+        }
+        indicatorAnimator = ValueAnimator.ofFloat(0.35f, 1f);
+        indicatorAnimator.setDuration(1_200L);
+        indicatorAnimator.setRepeatMode(ValueAnimator.REVERSE);
+        indicatorAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        indicatorAnimator.addUpdateListener(animator -> {
+            float value = (float) animator.getAnimatedValue();
+            localIndicator.setAlpha(value);
+            localIndicator.setScaleX(0.85f + value * 0.3f);
+            localIndicator.setScaleY(0.85f + value * 0.3f);
+        });
+        indicatorAnimator.start();
     }
 
     private void appendChildren(StringBuilder tree,
