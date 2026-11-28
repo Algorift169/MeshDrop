@@ -5,6 +5,8 @@ import android.text.format.DateUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.net.Uri;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -14,6 +16,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.meshdrop.R;
 import com.meshdrop.data.model.Conversation;
+import com.meshdrop.messaging.PeerAvatarStore;
 
 import java.util.Date;
 import java.util.Locale;
@@ -62,6 +65,17 @@ public final class ConversationAdapter
                 ? holder.itemView.getContext().getString(R.string.no_messages_yet)
                 : conversation.lastMessage);
         holder.avatar.setText(initialFor(conversation.peerUsername));
+        Uri avatarUri = PeerAvatarStore.getPeerAvatarUri(
+                holder.itemView.getContext(), conversation.peerUserId);
+        if (avatarUri == null) {
+            holder.avatarPhoto.setVisibility(View.GONE);
+            holder.avatar.setVisibility(View.VISIBLE);
+        } else {
+            holder.avatarPhoto.setImageURI(null);
+            holder.avatarPhoto.setImageURI(avatarUri);
+            holder.avatarPhoto.setVisibility(View.VISIBLE);
+            holder.avatar.setVisibility(View.GONE);
+        }
         holder.timestamp.setText(formatTimestamp(holder, conversation.updatedAt));
         holder.unreadDot.setVisibility(conversation.unreadCount > 0 ? View.VISIBLE : View.GONE);
         holder.itemView.setContentDescription(holder.itemView.getContext().getString(
@@ -83,6 +97,7 @@ public final class ConversationAdapter
 
     static final class ViewHolder extends RecyclerView.ViewHolder {
         final TextView avatar;
+        final ImageView avatarPhoto;
         final TextView username;
         final TextView preview;
         final TextView timestamp;
@@ -91,6 +106,7 @@ public final class ConversationAdapter
         ViewHolder(@NonNull View itemView) {
             super(itemView);
             avatar = itemView.findViewById(R.id.conversation_avatar);
+            avatarPhoto = itemView.findViewById(R.id.conversation_avatar_photo);
             username = itemView.findViewById(R.id.conversation_username);
             preview = itemView.findViewById(R.id.conversation_preview);
             timestamp = itemView.findViewById(R.id.conversation_timestamp);

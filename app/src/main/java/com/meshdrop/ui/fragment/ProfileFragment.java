@@ -4,6 +4,10 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -20,6 +24,8 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
+import androidx.activity.result.ActivityResult;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -27,6 +33,7 @@ import androidx.fragment.app.Fragment;
 
 import com.meshdrop.R;
 import com.meshdrop.ui.activity.MainActivity;
+import com.meshdrop.messaging.NearbyChatManager;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.yalantis.ucrop.UCrop;
 
@@ -44,22 +51,65 @@ public class ProfileFragment extends Fragment {
     private static final String KEY_NAME = "name";
     private static final String KEY_BIO = "bio";
     private static final String KEY_PHONE = "phone";
+    private static final String STATE_CROP_SOURCE = "state_crop_source";
+    private static final String STATE_CROP_OUTPUT = "state_crop_output";
+    private static final int MAX_STAGED_DIMENSION = 2048;
+    private static final int MAX_AVATAR_DIMENSION = 512;
+    @Nullable private File pendingCropSource;
+    @Nullable private File pendingCropOutput;
     private final ActivityResultLauncher<String[]> profilePicturePicker =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onPictureSelected);
     private final ActivityResultLauncher<Intent> profilePictureCropper =
-            registerForActivityResult(new StartActivityForResult(), result -> {
-                Intent data = result.getData();
-                if (result.getResultCode() == Activity.RESULT_OK && data != null) {
-                    Uri croppedUri = UCrop.getOutput(data);
-                    if (croppedUri != null && isAdded()) {
-                        saveProfilePicture(croppedUri);
-                    } else if (isAdded()) {
+            registerForActivityResult(new StartActivityForResult(), this::onCropResult);
+
+    @VisibleForTesting
+    void onCropResult(@NonNull ActivityResult result) {
+        Intent data = result.getData();
+        try {
+            if (result.getResultCode() == Activity.RESULT_OK && data != null) {
+                Uri croppedUri = UCrop.getOutput(data);
+                if (croppedUri != null && isAdded()) {
+                    if (!saveProfilePicture(croppedUri) && !saveCenterCroppedFallback()) {
                         showCropFailure(null);
                     }
-                } else if (result.getResultCode() == UCrop.RESULT_ERROR && data != null && isAdded()) {
-                    showCropFailure(UCrop.getError(data));
+                } else if (isAdded() && !saveCenterCroppedFallback()) {
+                    showCropFailure(null);
                 }
-            });
+            } else if (result.getResultCode() == UCrop.RESULT_ERROR && isAdded()) {
+                Throwable cropError = data != null ? UCrop.getError(data) : null;
+                if (cropError != null) {
+                    Log.w(TAG, "UCrop returned error, attempting center-crop fallback", cropError);
+                }
+                if (!saveCenterCroppedFallback()) {
+                    showCropFailure(cropError);
+                }
+            }
+        } finally {
+            cleanupCropFiles();
+        }
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (savedInstanceState != null) {
+            String sourcePath = savedInstanceState.getString(STATE_CROP_SOURCE);
+            String outputPath = savedInstanceState.getString(STATE_CROP_OUTPUT);
+            pendingCropSource = sourcePath != null ? new File(sourcePath) : null;
+            pendingCropOutput = outputPath != null ? new File(outputPath) : null;
+        }
+    }
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (pendingCropSource != null) {
+            outState.putString(STATE_CROP_SOURCE, pendingCropSource.getAbsolutePath());
+        }
+        if (pendingCropOutput != null) {
+            outState.putString(STATE_CROP_OUTPUT, pendingCropOutput.getAbsolutePath());
+        }
+    }
 
     @Nullable
     @Override
@@ -104,56 +154,255 @@ public class ProfileFragment extends Fragment {
             return;
         }
 
+        final File stagedSource;
         try {
-            requireContext().getContentResolver().takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        } catch (SecurityException ignored) {
+            stagedSource = stageSelectedPhoto(uri);
+        } catch (IOException | RuntimeException error) {
+            showCropFailure(error);
+            return;
         }
 
         File destination = new File(requireContext().getCacheDir(),
-            "profile-crop-" + UUID.randomUUID() + ".jpg");
+            "profile-crop-" + UUID.randomUUID() + ".png");
+        try {
+            if (!destination.exists()) {
+                destination.createNewFile();
+            }
+        } catch (IOException ignored) {
+        }
+        pendingCropSource = stagedSource;
+        pendingCropOutput = destination;
         UCrop.Options options = new UCrop.Options();
         options.setCircleDimmedLayer(true);
         options.setShowCropFrame(false);
         options.setShowCropGrid(false);
+        options.setCompressionFormat(Bitmap.CompressFormat.PNG);
         options.setToolbarTitle(getString(R.string.adjust_profile_photo));
-        Intent cropIntent = UCrop.of(uri, Uri.fromFile(destination))
+        Intent cropIntent = UCrop.of(Uri.fromFile(stagedSource), Uri.fromFile(destination))
             .withAspectRatio(1, 1)
-            .withMaxResultSize(512, 512)
+            .withMaxResultSize(MAX_AVATAR_DIMENSION, MAX_AVATAR_DIMENSION)
             .withOptions(options)
             .getIntent(requireContext());
-        cropIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         profilePictureCropper.launch(cropIntent);
         }
 
-    private void saveProfilePicture(@NonNull Uri uri) {
-        File savedImage = new File(requireContext().getFilesDir(),
-                "profile-picture-" + UUID.randomUUID() + ".jpg");
-        try (InputStream input = requireContext().getContentResolver().openInputStream(uri);
-             OutputStream output = new FileOutputStream(savedImage)) {
-            if (input == null) {
-                throw new IOException("Crop output could not be opened.");
-            }
-            byte[] buffer = new byte[8192];
-            int count;
-            while ((count = input.read(buffer)) != -1) {
-                output.write(buffer, 0, count);
+    @NonNull
+    private File stageSelectedPhoto(@NonNull Uri uri) throws IOException {
+        File stagedSource = new File(requireContext().getCacheDir(),
+                "profile-source-" + UUID.randomUUID() + ".jpg");
+        Bitmap decoded = decodeScaledBitmapFromUri(uri, MAX_STAGED_DIMENSION);
+        if (decoded == null) {
+            throw new IOException("Selected photo could not be decoded.");
+        }
+        Bitmap oriented = applyExifOrientation(uri, decoded);
+        try (OutputStream output = new FileOutputStream(stagedSource)) {
+            if (!oriented.compress(Bitmap.CompressFormat.JPEG, 95, output)) {
+                throw new IOException("Selected photo could not be staged.");
             }
             output.flush();
+            if (stagedSource.length() == 0) {
+                throw new IOException("Selected photo was empty.");
+            }
+            return stagedSource;
+        } catch (IOException | RuntimeException error) {
+            stagedSource.delete();
+            throw error;
+        } finally {
+            if (oriented != decoded && !oriented.isRecycled()) {
+                oriented.recycle();
+            }
+            if (!decoded.isRecycled()) {
+                decoded.recycle();
+            }
+        }
+    }
+
+    @Nullable
+    private Bitmap decodeScaledBitmapFromUri(@NonNull Uri uri, int maxDimension) throws IOException {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        try (InputStream boundsStream = requireContext().getContentResolver().openInputStream(uri)) {
+            if (boundsStream == null) {
+                throw new IOException("Photo stream could not be opened.");
+            }
+            BitmapFactory.decodeStream(boundsStream, null, bounds);
+        }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return null;
+        }
+        BitmapFactory.Options decodeOptions = new BitmapFactory.Options();
+        decodeOptions.inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension);
+        try (InputStream decodeStream = requireContext().getContentResolver().openInputStream(uri)) {
+            if (decodeStream == null) {
+                throw new IOException("Photo stream could not be opened.");
+            }
+            return BitmapFactory.decodeStream(decodeStream, null, decodeOptions);
+        }
+    }
+
+    @NonNull
+    private Bitmap applyExifOrientation(@NonNull Uri uri, @NonNull Bitmap bitmap) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return bitmap;
+        }
+        int orientation = ExifInterface.ORIENTATION_NORMAL;
+        try (InputStream exifStream = requireContext().getContentResolver().openInputStream(uri)) {
+            if (exifStream != null) {
+                ExifInterface exif = new ExifInterface(exifStream);
+                orientation = exif.getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+            }
+        } catch (IOException | RuntimeException ignored) {
+            return bitmap;
+        }
+        Matrix matrix = new Matrix();
+        switch (orientation) {
+            case ExifInterface.ORIENTATION_ROTATE_90:
+                matrix.postRotate(90f);
+                break;
+            case ExifInterface.ORIENTATION_ROTATE_180:
+                matrix.postRotate(180f);
+                break;
+            case ExifInterface.ORIENTATION_ROTATE_270:
+                matrix.postRotate(270f);
+                break;
+            case ExifInterface.ORIENTATION_FLIP_HORIZONTAL:
+                matrix.preScale(-1f, 1f);
+                break;
+            case ExifInterface.ORIENTATION_FLIP_VERTICAL:
+                matrix.preScale(1f, -1f);
+                break;
+            default:
+                return bitmap;
+        }
+        Bitmap rotated = Bitmap.createBitmap(
+                bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+        return rotated;
+    }
+
+    private static int calculateInSampleSize(int width, int height, int maxDimension) {
+        int inSampleSize = 1;
+        while ((width / inSampleSize) > maxDimension || (height / inSampleSize) > maxDimension) {
+            inSampleSize *= 2;
+        }
+        return inSampleSize;
+    }
+
+    private void cleanupCropFiles() {
+        if (pendingCropSource != null) {
+            pendingCropSource.delete();
+            pendingCropSource = null;
+        }
+        if (pendingCropOutput != null) {
+            pendingCropOutput.delete();
+            pendingCropOutput = null;
+        }
+    }
+
+    private boolean saveProfilePicture(@NonNull Uri uri) {
+        File savedImage = new File(requireContext().getFilesDir(),
+                "profile-picture-" + UUID.randomUUID() + ".jpg");
+        Bitmap decoded = null;
+        Bitmap scaled = null;
+        try {
+            decoded = decodeScaledBitmapFromUri(uri, MAX_AVATAR_DIMENSION);
+            if (decoded == null) {
+                throw new IOException("Crop output could not be decoded.");
+            }
+            scaled = scaleDownIfNeeded(decoded, MAX_AVATAR_DIMENSION);
+            try (OutputStream output = new FileOutputStream(savedImage)) {
+                if (!scaled.compress(Bitmap.CompressFormat.JPEG, 90, output)) {
+                    throw new IOException("Crop output could not be compressed.");
+                }
+                output.flush();
+            }
             if (savedImage.length() == 0) {
                 throw new IOException("Crop output was empty.");
             }
         } catch (IOException | RuntimeException error) {
             if (savedImage.exists()) savedImage.delete();
             Log.e(TAG, "Could not persist cropped profile photo", error);
-            showCropFailure(error);
-            return;
+            return false;
+        } finally {
+            if (scaled != null && scaled != decoded && !scaled.isRecycled()) {
+                scaled.recycle();
+            }
+            if (decoded != null && !decoded.isRecycled()) {
+                decoded.recycle();
+            }
         }
 
+        persistSavedProfilePicture(savedImage);
+        return true;
+    }
+
+    private boolean saveCenterCroppedFallback() {
+        if (pendingCropSource == null || !pendingCropSource.exists() || pendingCropSource.length() == 0) {
+            return false;
+        }
+        File savedImage = new File(requireContext().getFilesDir(),
+                "profile-picture-" + UUID.randomUUID() + ".jpg");
+        Bitmap decoded = null;
+        Bitmap cropped = null;
+        Bitmap scaled = null;
+        try {
+            decoded = decodeScaledBitmapFromUri(Uri.fromFile(pendingCropSource), MAX_STAGED_DIMENSION);
+            if (decoded == null) {
+                return false;
+            }
+            int size = Math.min(decoded.getWidth(), decoded.getHeight());
+            int left = (decoded.getWidth() - size) / 2;
+            int top = (decoded.getHeight() - size) / 2;
+            cropped = Bitmap.createBitmap(decoded, left, top, size, size);
+            scaled = scaleDownIfNeeded(cropped, MAX_AVATAR_DIMENSION);
+            try (OutputStream output = new FileOutputStream(savedImage)) {
+                if (!scaled.compress(Bitmap.CompressFormat.JPEG, 90, output)) {
+                    throw new IOException("Fallback crop could not be compressed.");
+                }
+                output.flush();
+            }
+            if (savedImage.length() == 0) {
+                throw new IOException("Fallback crop output was empty.");
+            }
+        } catch (IOException | RuntimeException error) {
+            if (savedImage.exists()) savedImage.delete();
+            Log.e(TAG, "Fallback profile photo crop failed", error);
+            return false;
+        } finally {
+            if (scaled != null && scaled != cropped && !scaled.isRecycled()) {
+                scaled.recycle();
+            }
+            if (cropped != null && cropped != decoded && !cropped.isRecycled()) {
+                cropped.recycle();
+            }
+            if (decoded != null && !decoded.isRecycled()) {
+                decoded.recycle();
+            }
+        }
+
+        persistSavedProfilePicture(savedImage);
+        return true;
+    }
+
+    @NonNull
+    private static Bitmap scaleDownIfNeeded(@NonNull Bitmap bitmap, int maxDimension) {
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        if (width <= maxDimension && height <= maxDimension) {
+            return bitmap;
+        }
+        float scale = Math.min((float) maxDimension / width, (float) maxDimension / height);
+        int targetWidth = Math.max(1, Math.round(width * scale));
+        int targetHeight = Math.max(1, Math.round(height * scale));
+        return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true);
+    }
+
+    private void persistSavedProfilePicture(@NonNull File savedImage) {
         SharedPreferences preferences = requireContext().getSharedPreferences(
                 PREFERENCES_NAME, Context.MODE_PRIVATE);
         String oldUri = preferences.getString(KEY_PROFILE_PICTURE, null);
         preferences.edit().putString(KEY_PROFILE_PICTURE, Uri.fromFile(savedImage).toString()).apply();
+        NearbyChatManager.getInstance(requireContext()).onLocalProfileChanged();
         View view = getView();
         if (view != null) {
             displayPicture(view, Uri.fromFile(savedImage));
@@ -163,7 +412,7 @@ public class ProfileFragment extends Fragment {
             if ("file".equals(previousUri.getScheme()) && previousUri.getPath() != null) {
                 File previousImage = new File(previousUri.getPath());
                 if (!previousImage.equals(savedImage)
-                        && previousImage.getParentFile().equals(requireContext().getFilesDir())) {
+                        && requireContext().getFilesDir().equals(previousImage.getParentFile())) {
                     previousImage.delete();
                 }
             }

@@ -12,6 +12,7 @@ After the automatic handshake, devices exchange a stable per-install user ID and
 - `NearbyChatManager` owns outgoing requests, automatic connection acceptance, connected endpoint-to-user mappings, message payloads, and acknowledgement processing.
 - `PeerIdentityManager` reuses a persistent per-install ID and reads the profile username. Nearby endpoint IDs are temporary transport addresses, never conversation keys.
 - `MessageProtocol` encodes versioned UTF-8 JSON envelopes, validates packet types and IDs, and limits packets and text size.
+- `PeerAvatarStore` exchanges profile photos as bounded, compressed JPEG metadata over the direct Nearby connection and stores each image by stable peer ID. It is not a general file-transfer path.
 - `ChatRepositoryImpl` performs database operations off the main thread; `ChatFragment` and `ChatActivity` use repository callbacks and transport events.
 
 ## Sending and delivery
@@ -25,6 +26,8 @@ The composer stores each outgoing message before sending. If the peer is disconn
 ## Identity and trust
 
 The peer's stable random installation ID is the conversation key. Username is display metadata and may be duplicated or changed. Anonymous Discovery advertises a generic name and sends that generic public username during handshake; it does not overwrite the saved profile. Connections are automatically accepted, so Nearby's authentication token is not manually verified. There is no public-key identity infrastructure, account verification, key recovery, or application-level end-to-end encryption; do not treat a connected username as proof of identity. Payloads should be treated as untrusted and message contents are not logged.
+
+Profile photos are resized and compressed to a small bounded JPEG, then sent in a separate identity-associated protocol packet. The receiver checks the connected stable peer ID, recipient ID, packet size, JPEG signature, and decoded dimensions before writing it to private app storage. Photos update when peers are connected; no remote image is available until a direct connection completes. Anonymous mode does not share the profile photo.
 
 ## Lifecycle and limitations
 

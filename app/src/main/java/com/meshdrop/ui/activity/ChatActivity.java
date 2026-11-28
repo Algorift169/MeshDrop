@@ -6,6 +6,7 @@ import android.text.TextWatcher;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -22,6 +23,7 @@ import com.meshdrop.database.repository.ChatRepository;
 import com.meshdrop.database.repository.ChatRepositoryImpl;
 import com.meshdrop.messaging.MessageDeliveryStatus;
 import com.meshdrop.messaging.ChatNotifications;
+import com.meshdrop.messaging.PeerAvatarStore;
 import com.meshdrop.messaging.MessagingCallback;
 import com.meshdrop.messaging.NearbyChatManager;
 import com.meshdrop.ui.adapter.MessageAdapter;
@@ -41,6 +43,7 @@ public final class ChatActivity extends AppCompatActivity implements MessagingCa
     private EditText messageInput;
     private TextView connectionStatus;
     private TextView peerAvatar;
+    private ImageView peerAvatarPhoto;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -62,8 +65,10 @@ public final class ChatActivity extends AppCompatActivity implements MessagingCa
         TextView peerName = findViewById(R.id.chat_peer_name);
         connectionStatus = findViewById(R.id.chat_connection_status);
         peerAvatar = findViewById(R.id.chat_peer_avatar);
+        peerAvatarPhoto = findViewById(R.id.chat_peer_avatar_photo);
         peerName.setText(peerUsername);
         peerAvatar.setText(initialFor(peerUsername));
+        updatePeerAvatar();
         connectionStatus.setText(chatManager.isConnected(peerUserId)
                 ? R.string.chat_status_connected
                 : R.string.chat_status_disconnected);
@@ -194,6 +199,20 @@ public final class ChatActivity extends AppCompatActivity implements MessagingCa
         peerUsername = username;
         ((TextView) findViewById(R.id.chat_peer_name)).setText(peerUsername);
         peerAvatar.setText(initialFor(peerUsername));
+        updatePeerAvatar();
+    }
+
+    private void updatePeerAvatar() {
+        android.net.Uri avatarUri = PeerAvatarStore.getPeerAvatarUri(this, peerUserId);
+        if (avatarUri == null) {
+            peerAvatarPhoto.setVisibility(android.view.View.GONE);
+            peerAvatar.setVisibility(android.view.View.VISIBLE);
+        } else {
+            peerAvatarPhoto.setImageURI(null);
+            peerAvatarPhoto.setImageURI(avatarUri);
+            peerAvatarPhoto.setVisibility(android.view.View.VISIBLE);
+            peerAvatar.setVisibility(android.view.View.GONE);
+        }
     }
 
     @Override

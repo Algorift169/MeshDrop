@@ -63,6 +63,7 @@ public final class NearbyChatManager {
                 new ConcurrentHashMap<String, Boolean>());
     private final Map<String, PeerIdentity> identitiesByEndpoint = new ConcurrentHashMap<>();
     private final Map<String, String> endpointsByPeerId = new ConcurrentHashMap<>();
+    private final Map<String, MessageEnvelope> pendingAvatarPackets = new ConcurrentHashMap<>();
         private final Set<String> outgoingConnectionEndpoints = Collections.newSetFromMap(
             new ConcurrentHashMap<String, Boolean>());
     private volatile String activeConversationUserId;
@@ -345,6 +346,8 @@ public final class NearbyChatManager {
                     null);
             connectionsClient.sendPayload(endpointId,
                     Payload.fromBytes(MessageProtocol.encode(envelope)))
+                    .addOnSuccessListener(unused -> sendProfileAvatar(
+                        endpointId, recipientUserId))
                     .addOnFailureListener(error -> {
                         if (packetType == MessageProtocol.PacketType.HANDSHAKE) {
                             identitySentEndpoints.remove(endpointId);
@@ -358,6 +361,56 @@ public final class NearbyChatManager {
             }
             notifyError("Could not encode MeshDrop identity.", error);
         }
+    }
+
+    private void sendProfileAvatar(@NonNull String endpointId,
+                                   @NonNull String recipientUserId) {
+        if (!connectedEndpoints.contains(endpointId)) return;
+        PeerIdentity local = peerIdentityManager.getLocalIdentity();
+        String avatar = local.anonymousMode
+            ? ""
+            : PeerAvatarStore.getLocalAvatarPayload(appContext);
+        MessageEnvelope envelope = new MessageEnvelope(
+                MessageProtocol.VERSION,
+                MessageProtocol.PacketType.PROFILE_AVATAR,
+                UUID.randomUUID().toString(),
+                local.userId,
+                recipientUserId,
+                System.currentTimeMillis(),
+                avatar == null ? "" : avatar,
+                null);
+        sendControlPacket(endpointId, envelope);
+    }
+
+    private void receivePeerAvatar(@NonNull String endpointId,
+                                   @NonNull MessageEnvelope envelope) {
+        PeerIdentity identity = identitiesByEndpoint.get(endpointId);
+        if (identity == null) {
+            pendingAvatarPackets.put(endpointId, envelope);
+            return;
+        }
+        persistPeerAvatar(endpointId, identity, envelope);
+    }
+
+    private void persistPeerAvatar(@NonNull String endpointId,
+                                   @NonNull PeerIdentity identity,
+                                   @NonNull MessageEnvelope envelope) {
+        String localUserId = peerIdentityManager.getLocalIdentity().userId;
+        if (!connectedEndpoints.contains(endpointId)
+                || !identity.userId.equals(envelope.senderUserId)
+                || !(UNKNOWN_RECIPIENT.equals(envelope.recipientUserId)
+                || localUserId.equals(envelope.recipientUserId))) {
+            return;
+        }
+        if (!PeerAvatarStore.savePeerAvatar(appContext, identity.userId, envelope.payload)) {
+            notifyError("Received an invalid peer profile image.", null);
+            return;
+        }
+        dispatch(() -> {
+            for (MessagingCallback callback : callbacks) {
+                callback.onPeerIdentityReceived(endpointId, identity);
+            }
+        });
     }
 
     private final ConnectionLifecycleCallback connectionLifecycleCallback =
@@ -404,6 +457,7 @@ public final class NearbyChatManager {
                     identitySentEndpoints.remove(endpointId);
                     identityPersistencePending.remove(endpointId);
                     PeerIdentity peer = identitiesByEndpoint.remove(endpointId);
+                    pendingAvatarPackets.remove(endpointId);
                     peerIdentityManager.removeEndpoint(endpointId);
                             boolean topologyChanged = NearbyDiscoveryManager.getInstance(appContext)
                                 .removeConnectedPeerTopology(endpointId);
@@ -437,6 +491,8 @@ public final class NearbyChatManager {
             if (envelope.packetType == MessageProtocol.PacketType.HANDSHAKE
                     || envelope.packetType == MessageProtocol.PacketType.CONNECTION_INFO) {
                 receiveIdentity(endpointId, envelope);
+            } else if (envelope.packetType == MessageProtocol.PacketType.PROFILE_AVATAR) {
+                receivePeerAvatar(endpointId, envelope);
             } else {
                 PeerIdentity peer = identitiesByEndpoint.get(endpointId);
                 if (peer == null || !peer.userId.equals(envelope.senderUserId)
@@ -502,6 +558,10 @@ public final class NearbyChatManager {
                     identitiesByEndpoint.put(endpointId, identity);
                     endpointsByPeerId.put(identity.userId, endpointId);
                     boolean topologyChanged = mergePeerTree(endpointId, identity, peerTree);
+                    MessageEnvelope pendingAvatar = pendingAvatarPackets.remove(endpointId);
+                    if (pendingAvatar != null) {
+                        persistPeerAvatar(endpointId, identity, pendingAvatar);
+                    }
                     boolean openInitiatedChat = previousIdentity == null
                             && outgoingConnectionEndpoints.remove(endpointId);
                     dispatch(() -> {

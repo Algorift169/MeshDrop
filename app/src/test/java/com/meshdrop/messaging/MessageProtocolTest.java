@@ -30,6 +30,25 @@ public class MessageProtocolTest {
         assertEquals(original.packetType, decoded.packetType);
     }
 
+        @Test
+        public void profileAvatarEnvelopeRoundTrips() {
+                MessageEnvelope original = new MessageEnvelope(
+                                MessageProtocol.VERSION,
+                                MessageProtocol.PacketType.PROFILE_AVATAR,
+                                UUID.randomUUID().toString(),
+                                UUID.randomUUID().toString(),
+                                UUID.randomUUID().toString(),
+                                1_700_000_000_000L,
+                                "AA==",
+                                null);
+
+                MessageEnvelope decoded = MessageProtocol.decode(MessageProtocol.encode(original));
+
+                assertEquals(MessageProtocol.PacketType.PROFILE_AVATAR, decoded.packetType);
+                assertEquals(original.payload, decoded.payload);
+                assertEquals(original.senderUserId, decoded.senderUserId);
+        }
+
     @Test
     public void malformedAndUnsupportedPacketsAreRejected() {
         assertThrows(IllegalArgumentException.class,

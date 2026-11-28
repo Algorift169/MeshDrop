@@ -20,7 +20,8 @@ public final class MessageProtocol {
         HANDSHAKE,
         TEXT_MESSAGE,
         MESSAGE_ACK,
-        CONNECTION_INFO
+        CONNECTION_INFO,
+        PROFILE_AVATAR
     }
 
     @NonNull
