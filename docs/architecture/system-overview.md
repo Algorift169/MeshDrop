@@ -8,7 +8,11 @@
 
 `MainActivity` checks Google Play Services, runtime permissions, Bluetooth hardware, and Bluetooth activation state. It starts one `DiscoveryForegroundService`, which keeps the application-scoped `NearbyDiscoveryManager` active while the app is backgrounded.
 
-`NearbyDiscoveryManager` advertises and discovers with `Strategy.P2P_CLUSTER` and the application package service ID. It owns a thread-safe endpoint registry, connects to direct peers, and exchanges bounded in-memory peer paths. `MeshFragment` listens only for UI updates, and `RefreshRadar` renders the resulting tree. No database participates in discovery or topology exchange.
+`NearbyDiscoveryManager` advertises and discovers with `Strategy.P2P_CLUSTER` and the application package service ID. It owns the temporary endpoint registry and does not connect or accept peers automatically. `MeshFragment` renders direct endpoints and hands taps to `NearbyChatManager`.
+
+## Messaging architecture
+
+`NearbyChatManager` reuses Nearby Connections for explicit user-approved direct connections, identity handshakes, text payloads, and application acknowledgements. `PeerIdentityManager` maps temporary endpoint IDs to a persistent per-install user ID and profile username. `MessageProtocol` validates versioned bounded JSON packets. `ChatRepositoryImpl` persists messages and conversation previews in the existing SQLite database; `ChatFragment` lists conversations and `ChatActivity` displays the live thread. See [messaging-architecture.md](messaging-architecture.md) for protocol and trust details.
 
 ## Settings architecture
 
@@ -21,12 +25,14 @@ flowchart LR
     C --> D[Bluetooth activation]
     D --> E[Advertising + Discovery]
     E --> F[Endpoint callbacks]
-    F --> G[Thread-safe endpoint registry]
-    G --> H[Automatic Nearby connections]
-    H --> I[Peer path exchange]
-    I --> J[Peer topology]
-    J --> K[MeshFragment callbacks]
-    K --> L[RefreshRadar tree]
+    F --> G[Temporary endpoint registry]
+    G --> H[Mesh Radar]
+    H --> I[User taps direct peer]
+    I --> J[NearbyChatManager consent flow]
+    J --> K[Identity handshake and text protocol]
+    K --> L[ChatRepository transaction]
+    L --> M[SQLite history]
+    M --> N[ChatFragment / ChatActivity]
     M[SettingsFragment] --> N[SettingsManager]
     N --> O[SettingsRepository]
     N --> P[NearbyDiscoveryManager policies]
@@ -35,8 +41,8 @@ flowchart LR
 
 ## Feature boundaries
 
-- Mesh discovers direct Nearby endpoints, connects to them, and exchanges display-name topology while foregrounded or backgrounded through its service. It does not route messages or files.
-- Chats use an application-scoped `MeshDropDatabase` (`SQLiteOpenHelper`) with conversation/message DAOs, entities, and a repository. Repository operations run on a single worker thread and return callbacks on the main thread. There is no network transport or incoming-message path connected to the UI.
+- Mesh discovers direct Nearby endpoints; chat connections start only after a user taps a peer and both users accept. Messages are direct only and are not relayed.
+- Chats use the application-scoped `MeshDropDatabase` (`SQLiteOpenHelper`) with conversation/message DAOs, entities, and a repository. Repository operations run on a single worker thread. Nearby payloads carry direct text packets and ACKs; file transfer and multi-hop messaging are absent.
 - Profile field values and the selected avatar URI are stored in the `profile` SharedPreferences file. The cropped image itself is in the app's private files directory.
 - Appearance is stored in the `appearance` SharedPreferences file and applied with `AppCompatDelegate`.
 - Files currently presents an empty state; no transfer service or transfer database is connected.

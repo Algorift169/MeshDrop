@@ -53,6 +53,12 @@ nearby_manager="app/src/main/java/com/meshdrop/discovery/NearbyDiscoveryManager.
 permission_manager="app/src/main/java/com/meshdrop/discovery/DiscoveryPermissionManager.java"
 refresh_radar="app/src/main/java/com/meshdrop/ui/RefreshRadar.java"
 discovery_service="app/src/main/java/com/meshdrop/discovery/DiscoveryForegroundService.java"
+chat_manager="app/src/main/java/com/meshdrop/messaging/NearbyChatManager.java"
+message_protocol="app/src/main/java/com/meshdrop/messaging/MessageProtocol.java"
+chat_activity="app/src/main/java/com/meshdrop/ui/activity/ChatActivity.java"
+conversation_layout="app/src/main/res/layout/item_conversation.xml"
+message_sent_layout="app/src/main/res/layout/item_message_sent.xml"
+message_received_layout="app/src/main/res/layout/item_message_received.xml"
 settings_manager="app/src/main/java/com/meshdrop/settings/SettingsManager.java"
 settings_fragment="app/src/main/java/com/meshdrop/settings/SettingsFragment.java"
 settings_repository="app/src/main/java/com/meshdrop/settings/SettingsRepository.java"
@@ -71,7 +77,7 @@ if grep -Fq 'MaterialCardView' "$files_layout"; then
 fi
 pass 'chat and files lists are unboxed'
 assert_contains "$meshdrop_database" 'DATABASE_NAME = "meshdrop_chats.db"' 'chat database filename is preserved'
-assert_contains "$meshdrop_database" 'DATABASE_VERSION = 1' 'chat database version is preserved'
+assert_contains "$meshdrop_database" 'DATABASE_VERSION = 2' 'chat database has a safe v2 migration'
 assert_contains "$meshdrop_database" 'CREATE INDEX messages_peer_created_at' 'chat message index is defined'
 assert_contains "$meshdrop_database" 'ON DELETE CASCADE' 'chat message foreign key cascades'
 assert_contains "$conversation_dao" 'getAll()' 'conversation DAO retrieves all conversations'
@@ -80,7 +86,7 @@ assert_contains "$message_dao" 'COLUMN_MESSAGE_ID + " ASC"' 'message ordering ha
 assert_contains "$chat_repository" 'void saveMessage(' 'chat repository exposes message writes'
 assert_contains "$chat_repository_impl" 'sqliteDatabase.beginTransaction();' 'chat writes use a transaction'
 assert_contains "$chat_repository_impl" 'Executors.newSingleThreadExecutor()' 'database work uses a worker thread'
-assert_contains "$chat_fragment" 'repository.saveMessage(' 'chat composer saves through repository'
+assert_contains "$chat_fragment" 'ConversationAdapter' 'ChatFragment displays repository conversations'
 if grep -Eq 'ChatDatabase|SQLiteDatabase|android\.database' "$chat_fragment"; then
     fail 'chat UI must not access the database directly'
 fi
@@ -101,9 +107,19 @@ assert_contains "$nearby_manager" 'onEndpointFound(' 'endpoint discovery callbac
 assert_contains "$nearby_manager" 'onEndpointLost(' 'endpoint loss callbacks are implemented'
 assert_contains "$nearby_manager" 'scheduleRetry()' 'Nearby session failures schedule retries'
 assert_contains "$nearby_manager" 'refreshDiscovery()' 'Nearby session can be refreshed'
-assert_contains "$nearby_manager" 'requestConnection(' 'direct peers are connected for topology exchange'
-assert_contains "$nearby_manager" 'acceptConnection(' 'incoming topology connections are accepted'
-assert_contains "$nearby_manager" 'sendPayload(' 'peer topology is exchanged over Nearby'
+assert_contains "$nearby_manager" 'onNearbyConnectionInitiated' 'discovery forwards incoming connection events'
+assert_contains "$chat_manager" 'requestConnection(' 'user-initiated Nearby connections are implemented'
+assert_contains "$chat_manager" 'acceptConnection(' 'connections require explicit user acceptance'
+assert_contains "$chat_manager" 'sendPayload(' 'text messages use Nearby payloads'
+assert_contains "$message_protocol" 'MAX_PACKET_BYTES' 'incoming message packets are size limited'
+assert_contains "$chat_activity" 'ChatRepositoryImpl' 'ChatActivity loads persisted conversation history'
+assert_contains "$conversation_layout" '@+id/conversation_username' 'conversation rows show usernames'
+assert_contains "$message_sent_layout" '@+id/message_body' 'sent message layout exists'
+assert_contains "$message_received_layout" '@+id/message_body' 'received message layout exists'
+if grep -Eq 'requestConnection\(|acceptConnection\(' "$nearby_manager"; then
+    fail 'discovery must not automatically request or accept chat connections'
+fi
+pass 'discovery never auto-connects peers'
 assert_contains "$nearby_manager" 'PeerTopology' 'peer routes are tracked separately from discovery endpoints'
 assert_contains "$refresh_radar" '└── ' 'peer tree uses branch markers'
 assert_contains "$mesh_layout" '@+id/refresh_discovery' 'refresh button sits beside discovery status'

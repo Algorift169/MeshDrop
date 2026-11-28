@@ -7,14 +7,17 @@ import android.bluetooth.BluetoothManager;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.widget.FrameLayout;
+import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
@@ -24,7 +27,13 @@ import androidx.fragment.app.FragmentTransaction;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.badge.BadgeDrawable;
 import com.meshdrop.R;
+import com.meshdrop.data.model.Conversation;
+import com.meshdrop.data.model.Message;
+import com.meshdrop.data.model.PeerIdentity;
+import com.meshdrop.database.repository.ChatRepository;
+import com.meshdrop.database.repository.ChatRepositoryImpl;
 import com.meshdrop.ui.fragment.ChatFragment;
 import com.meshdrop.ui.fragment.FilesFragment;
 import com.meshdrop.ui.fragment.MeshFragment;
@@ -37,16 +46,21 @@ import com.meshdrop.discovery.NearbyDiscoveryManager;
 import com.meshdrop.settings.ForceBluetooth;
 import com.meshdrop.settings.SettingsManager;
 import com.meshdrop.settings.SettingsFragment;
+import com.meshdrop.messaging.MessagingCallback;
+import com.meshdrop.messaging.NearbyChatManager;
 
-public class MainActivity extends AppCompatActivity {
+
+public class MainActivity extends AppCompatActivity implements MessagingCallback {
     private static final String STATE_SELECTED_DESTINATION = "selected_destination";
     private int selectedDestination = R.id.nav_mesh;
     private BottomNavigationView bottomNavigation;
     private FrameLayout contentContainer;
     private NearbyDiscoveryManager discoveryManager;
+    private NearbyChatManager chatManager;
     private DiscoveryPermissionManager permissionManager;
     private ActivityResultLauncher<String[]> permissionLauncher;
     private ActivityResultLauncher<Intent> bluetoothLauncher;
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
     private boolean bluetoothRequestPending;
     private boolean bluetoothPromptDeclined;
     private boolean permissionRequestDenied;
@@ -75,6 +89,7 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setNavigationBarColor(getColor(R.color.background));
 
         discoveryManager = NearbyDiscoveryManager.getInstance(getApplicationContext());
+        chatManager = NearbyChatManager.getInstance(getApplicationContext());
         permissionManager = new DiscoveryPermissionManager(getApplicationContext());
         permissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestMultiplePermissions(),
@@ -89,6 +104,8 @@ public class MainActivity extends AppCompatActivity {
                     bluetoothPromptDeclined = result.getResultCode() != RESULT_OK;
                     checkPrerequisites();
                 });
+        notificationPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(), granted -> {});
 
         bottomNavigation = findViewById(R.id.bottom_navigation);
         contentContainer = findViewById(R.id.fragment_container);
@@ -147,30 +164,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void openConversation(@NonNull String peerId, @NonNull String displayName) {
-        Bundle arguments = new Bundle();
-        arguments.putString(ChatFragment.ARG_PEER_ID, peerId);
-        arguments.putString(ChatFragment.ARG_PEER_NAME, displayName);
-
-        FragmentManager manager = getSupportFragmentManager();
-        FragmentTransaction transaction = manager.beginTransaction();
-        for (Fragment existing : manager.getFragments()) {
-            transaction.hide(existing);
-        }
-        String conversationTag = "conversation:" + peerId;
-        Fragment conversation = manager.findFragmentByTag(conversationTag);
-        if (conversation == null) {
-            conversation = new ChatFragment();
-            conversation.setArguments(arguments);
-            transaction.add(R.id.fragment_container, conversation, conversationTag);
-        } else {
-            transaction.show(conversation);
-        }
-        transaction.commit();
-
-        selectedDestination = R.id.nav_chat;
-        bottomNavigation.setOnItemSelectedListener(null);
-        bottomNavigation.setSelectedItemId(R.id.nav_chat);
-        bottomNavigation.setOnItemSelectedListener(this::onDestinationSelected);
+        Intent intent = new Intent(this, ChatActivity.class);
+        intent.putExtra(ChatActivity.EXTRA_PEER_USER_ID, peerId);
+        intent.putExtra(ChatActivity.EXTRA_PEER_USERNAME, displayName);
+        startActivity(intent);
     }
 
     public void showChatList() {
@@ -205,11 +202,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         checkPrerequisites();
+        refreshUnreadBadge();
     }
 
     @Override
     protected void onStart() {
         super.onStart();
+        chatManager.addCallback(this);
         if (bluetoothReceiverRegistered) return;
         IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -223,6 +222,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onStop() {
+        chatManager.removeCallback(this);
         if (bluetoothReceiverRegistered) {
             unregisterReceiver(bluetoothStateReceiver);
             bluetoothReceiverRegistered = false;
@@ -232,6 +232,96 @@ public class MainActivity extends AppCompatActivity {
 
     public NearbyDiscoveryManager getDiscoveryManager() {
         return discoveryManager;
+    }
+
+    public void onLocalProfileNameChanged() {
+        discoveryManager.onLocalProfileChanged();
+        chatManager.onLocalProfileChanged();
+    }
+
+    public void connectToDiscoveredEndpoint(@NonNull String endpointId) {
+        Toast.makeText(this, R.string.chat_connecting, Toast.LENGTH_SHORT).show();
+        chatManager.connectToEndpoint(endpointId);
+    }
+
+    @Override
+    public void onConnectionRequestReceived(@NonNull String endpointId,
+                                           @NonNull String displayName,
+                                           @NonNull String authenticationToken,
+                                           boolean outgoingRequest) {
+        if (isFinishing() || isDestroyed()) return;
+        chatManager.acceptConnection(endpointId);
+    }
+
+    @Override
+    public void onConnectionRejected(@NonNull String endpointId) {
+        Toast.makeText(this, R.string.connection_rejected, Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onConnectionEstablished(@NonNull PeerIdentity peer) {
+        Intent intent = new Intent(this, ChatActivity.class);
+        intent.putExtra(ChatActivity.EXTRA_PEER_USER_ID, peer.userId);
+        intent.putExtra(ChatActivity.EXTRA_PEER_USERNAME, peer.username);
+        startActivity(intent);
+    }
+
+    @Override
+    public void onConnectionDisconnected(@NonNull String peerUserId) {
+        Toast.makeText(this, R.string.connection_disconnected, Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onMessagingError(@NonNull String message, @Nullable Throwable cause) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+    }
+
+    @Override
+    public void onMessageReceived(@NonNull Message message) {
+        refreshUnreadBadge();
+    }
+
+    private void refreshUnreadBadge() {
+        if (bottomNavigation == null) return;
+        ChatRepository repository = ChatRepositoryImpl.getInstance(getApplicationContext());
+        repository.getConversations(new ChatRepository.Callback<java.util.List<Conversation>>() {
+            @Override
+            public void onSuccess(java.util.List<Conversation> conversations) {
+                if (isFinishing() || isDestroyed() || bottomNavigation == null) return;
+                int unreadCount = 0;
+                for (Conversation conversation : conversations) {
+                    unreadCount += conversation.unreadCount;
+                }
+                if (unreadCount == 0) {
+                    bottomNavigation.removeBadge(R.id.nav_chat);
+                    return;
+                }
+                BadgeDrawable badge = bottomNavigation.getOrCreateBadge(R.id.nav_chat);
+                badge.setBackgroundColor(Color.RED);
+                badge.setBadgeTextColor(Color.WHITE);
+                badge.setNumber(unreadCount);
+                badge.setVisible(true);
+            }
+
+            @Override
+            public void onError(@NonNull Exception error) {
+                Toast.makeText(MainActivity.this, R.string.chat_storage_error,
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        android.content.SharedPreferences preferences = getSharedPreferences(
+                "notification_permissions", MODE_PRIVATE);
+        if (preferences.getBoolean("requested", false)) return;
+        preferences.edit().putBoolean("requested", true).apply();
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
     }
 
     public void checkPrerequisites() {
@@ -306,6 +396,8 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         bluetoothPromptDeclined = false;
+
+        requestNotificationPermissionIfNeeded();
 
         Intent serviceIntent = new Intent(this, DiscoveryForegroundService.class);
         serviceIntent.setAction(forceRefresh

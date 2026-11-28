@@ -70,19 +70,12 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
-        <ScrollView
+        <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/conversation_list"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:fillViewport="true"
             android:visibility="gone">
-
-            <LinearLayout
-                android:id="@+id/conversation_rows"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-        </ScrollView>
+        </androidx.recyclerview.widget.RecyclerView>
 
         <LinearLayout
             android:id="@+id/conversation_panel"

@@ -25,6 +25,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 android.sourceSets.getByName("main").res.srcDir(generatedLauncherResources)
@@ -36,8 +40,11 @@ tasks.named("preBuild").configure {
 dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.fragment:fragment:1.8.5")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.github.yalantis:ucrop:2.2.11")
     implementation("com.google.android.gms:play-services-nearby:19.3.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }

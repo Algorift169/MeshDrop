@@ -2,8 +2,13 @@ package com.meshdrop.ui;
 
 import android.content.Context;
 import android.animation.ValueAnimator;
+import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.text.SpannableStringBuilder;
+import android.text.TextPaint;
+import android.text.method.LinkMovementMethod;
+import android.text.style.ClickableSpan;
 import android.util.AttributeSet;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -27,6 +32,10 @@ import java.util.Map;
 import java.util.Set;
 
 public final class RefreshRadar extends FrameLayout {
+    public interface OnPeerClickListener {
+        void onPeerClick(@NonNull PeerTreeNode peer);
+    }
+
     private final TextView treeText;
     private final TextView localDeviceText;
     private final View localIndicator;
@@ -37,6 +46,7 @@ public final class RefreshRadar extends FrameLayout {
     private String emptyMessage = "No directly discovered peers.";
     private boolean animationEnabled = true;
     private ValueAnimator indicatorAnimator;
+    private OnPeerClickListener peerClickListener;
 
     public RefreshRadar(@NonNull Context context) {
         this(context, null);
@@ -87,6 +97,8 @@ public final class RefreshRadar extends FrameLayout {
         treeText.setTypeface(Typeface.MONOSPACE);
         treeText.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
         treeText.setPadding(dp(8), dp(8), dp(8), dp(8));
+        treeText.setMovementMethod(LinkMovementMethod.getInstance());
+        treeText.setHighlightColor(Color.TRANSPARENT);
         content.addView(treeText, new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
@@ -132,9 +144,14 @@ public final class RefreshRadar extends FrameLayout {
         renderTree();
     }
 
+    public void setOnPeerClickListener(@Nullable OnPeerClickListener listener) {
+        peerClickListener = listener;
+        renderTree();
+    }
+
     private void renderTree() {
         localDeviceText.setText(localDeviceName);
-        StringBuilder tree = new StringBuilder();
+        SpannableStringBuilder tree = new SpannableStringBuilder();
         List<PeerTreeNode> visibleNodes = new ArrayList<>(peerTreeNodes);
         Set<String> representedEndpoints = new HashSet<>();
         for (PeerTreeNode node : peerTreeNodes) {
@@ -175,7 +192,7 @@ public final class RefreshRadar extends FrameLayout {
             tree.append('\n');
             appendChildren(tree, children, localPeerId, "", new HashSet<>());
         }
-        treeText.setText(tree.toString());
+        treeText.setText(tree, TextView.BufferType.SPANNABLE);
     }
 
     @Override
@@ -217,7 +234,7 @@ public final class RefreshRadar extends FrameLayout {
         indicatorAnimator.start();
     }
 
-    private void appendChildren(StringBuilder tree,
+    private void appendChildren(SpannableStringBuilder tree,
                                 Map<String, List<PeerTreeNode>> children,
                                 String parentId,
                                 String prefix,
@@ -234,8 +251,25 @@ public final class RefreshRadar extends FrameLayout {
             PeerTreeNode node = visibleSiblings.get(index);
             if (!visited.add(node.getPeerId())) continue;
             boolean last = index == visibleSiblings.size() - 1;
-            tree.append(prefix).append(last ? "└── " : "├── ")
-                    .append(node.getDeviceName()).append('\n');
+            tree.append(prefix).append(last ? "└── " : "├── ");
+            int nameStart = tree.length();
+            tree.append(node.getDeviceName());
+            int nameEnd = tree.length();
+            if (node.getEndpointId() != null && peerClickListener != null) {
+                tree.setSpan(new ClickableSpan() {
+                    @Override
+                    public void onClick(@NonNull View widget) {
+                        peerClickListener.onPeerClick(node);
+                    }
+
+                    @Override
+                    public void updateDrawState(@NonNull TextPaint paint) {
+                        paint.setColor(getContext().getColor(R.color.accent));
+                        paint.setUnderlineText(false);
+                    }
+                }, nameStart, nameEnd, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            tree.append('\n');
             appendChildren(tree, children, node.getPeerId(),
                     prefix + (last ? "    " : "│   "), visited);
         }

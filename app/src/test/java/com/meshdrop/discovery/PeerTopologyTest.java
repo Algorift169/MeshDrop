@@ -45,6 +45,22 @@ public class PeerTopologyTest {
         assertEquals(0, topology.getTreeNodes().size());
     }
 
+    @Test
+    public void importsConnectedPeerTreeWithCorrectParentChain() {
+        PeerTopology topology = new PeerTopology("node-a", "User One");
+        PeerTreeNode userThree = new PeerTreeNode(
+                "node-c", "User Three", "node-b", null, 1);
+
+        topology.updateFromNeighborTree("endpoint-b", "node-b", "User Two",
+                Collections.singletonList(userThree));
+
+        PeerTreeNode userTwo = findPeer(topology.getTreeNodes(), "node-b");
+        PeerTreeNode importedUserThree = findPeer(topology.getTreeNodes(), "node-c");
+        assertEquals("node-a", userTwo.getParentId());
+        assertEquals("node-b", importedUserThree.getParentId());
+        assertEquals(2, importedUserThree.getHopCount());
+    }
+
     private PeerTreeNode findPeer(List<PeerTreeNode> peers, String peerId) {
         for (PeerTreeNode peer : peers) {
             if (peerId.equals(peer.getPeerId())) return peer;

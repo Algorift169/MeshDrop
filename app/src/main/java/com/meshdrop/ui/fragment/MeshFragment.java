@@ -60,6 +60,9 @@ public class MeshFragment extends Fragment implements SettingsManager.Listener {
         public void onPeerTopologyChanged(@NonNull List<PeerTreeNode> peers) {
             currentPeers = new ArrayList<>(peers);
             if (refreshRadar != null) {
+                if (discoveryManager != null) {
+                    refreshRadar.setLocalDeviceName(discoveryManager.getAdvertisingName());
+                }
                 refreshRadar.setPeerTreeNodes(peers);
             }
             updatePeerCount();
@@ -105,6 +108,11 @@ public class MeshFragment extends Fragment implements SettingsManager.Listener {
             if (discoveryManager != null) {
                 refreshRadar.setLocalDeviceName(discoveryManager.getAdvertisingName());
                 refreshRadar.setLocalPeerId(discoveryManager.getLocalPeerId());
+                refreshRadar.setOnPeerClickListener(peer -> {
+                    if (peer.getEndpointId() != null && getActivity() instanceof MainActivity) {
+                        ((MainActivity) getActivity()).connectToDiscoveredEndpoint(peer.getEndpointId());
+                    }
+                });
                 discoveryManager.registerCallback(discoveryCallback);
             }
         }

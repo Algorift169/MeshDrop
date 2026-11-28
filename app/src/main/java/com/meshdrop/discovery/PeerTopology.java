@@ -73,6 +73,53 @@ final class PeerTopology {
         return recompute();
     }
 
+    synchronized boolean updateFromNeighborTree(
+            @NonNull String endpointId,
+            @NonNull String neighborId,
+            @NonNull String neighborName,
+            @NonNull List<PeerTreeNode> advertisedPeers) {
+        Map<String, PeerTreeNode> peersById = new HashMap<>();
+        for (PeerTreeNode peer : advertisedPeers) {
+            if (!peer.getPeerId().equals(localPeerId)
+                    && !peer.getPeerId().equals(neighborId)) {
+                peersById.put(peer.getPeerId(), peer);
+            }
+        }
+
+        List<Route> routes = new ArrayList<>();
+        for (PeerTreeNode target : peersById.values()) {
+            List<String> reversedIds = new ArrayList<>();
+            List<String> reversedNames = new ArrayList<>();
+            Set<String> visited = new HashSet<>();
+            PeerTreeNode current = target;
+            boolean reachedNeighbor = false;
+            while (current != null && reversedIds.size() < MAX_HOPS
+                    && visited.add(current.getPeerId())) {
+                reversedIds.add(current.getPeerId());
+                reversedNames.add(current.getDeviceName());
+                String parentId = current.getParentId();
+                if (neighborId.equals(parentId)) {
+                    reachedNeighbor = true;
+                    break;
+                }
+                current = parentId == null ? null : peersById.get(parentId);
+            }
+            if (!reachedNeighbor || reversedIds.size() > MAX_HOPS) continue;
+
+            Collections.reverse(reversedIds);
+            Collections.reverse(reversedNames);
+            List<String> pathIds = new ArrayList<>(reversedIds.size() + 1);
+            List<String> pathNames = new ArrayList<>(reversedNames.size() + 1);
+            pathIds.add(neighborId);
+            pathIds.addAll(reversedIds);
+            pathNames.add(neighborName);
+            pathNames.addAll(reversedNames);
+            routes.add(new Route(target.getPeerId(), target.getDeviceName(),
+                    pathIds, pathNames, null));
+        }
+        return updateFromNeighbor(endpointId, neighborId, neighborName, routes);
+    }
+
     synchronized boolean removeNeighbor(@NonNull String endpointId) {
         routesByEndpoint.remove(endpointId);
         return recompute();

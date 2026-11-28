@@ -16,4 +16,4 @@ This folder documents the current Android app, its implemented local features, a
 
 ## Current scope
 
-Chat messages, profile fields, the avatar, settings, and appearance choice are stored on the device. Nearby discovery and peer topology are implemented through Google Nearby Connections. Chat delivery and file transfer remain unimplemented.
+Chat history, profile fields, settings, and appearance are stored on the device. Nearby discovery and user-approved direct text messaging are implemented through Google Nearby Connections. File transfer and multi-hop message forwarding remain unimplemented.

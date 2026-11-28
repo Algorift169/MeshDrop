@@ -2,17 +2,17 @@
 
 ## Discovery behavior
 
-The Mesh destination uses Nearby Connections to advertise and continuously discover direct peers. Failed starts retry with bounded backoff. A foreground service keeps scanning in the background and shows an ongoing notification. Connected devices exchange public names and peer paths, which `RefreshRadar` renders as a tree. Its refresh button restarts discovery.
+The Mesh destination uses Nearby Connections to advertise and continuously discover direct peers. Failed starts retry with bounded backoff. A foreground service keeps scanning in the background and shows an ongoing notification. `RefreshRadar` shows usernames for directly discovered endpoints in a tree. Its refresh button restarts discovery.
 
 Settings control scanning and advertising independently. Force Scan controls automatic discovery; with it off, scanning starts only from Refresh. Auto Advertise and Device Visibility must both be on for this device to advertise. These controls do not disable the system Bluetooth adapter.
 
-Discovered peers are endpoint-only until the automatic Nearby connection succeeds. Peer names in the tree are not physical distance or GPS measurements.
+Discovered peers remain unconnected until a user taps a username and both users accept the Nearby authentication token. Peer names in the tree are not physical distance or GPS measurements.
 
 ## Peer categories
 
 - Discovered peers: endpoints found directly through Nearby.
-- Connected peers: directly discovered endpoints connected automatically for peer-list exchange.
-- Relayed peers: devices learned through a connected peer appear nested in the tree; this shares topology only, not messages or files.
+- Connected peers: direct peers accepted by both users for chat.
+- Relayed peers: topology may be displayed when learned from an approved direct peer; text messages are never forwarded through relays.
 
 ## Implementation
 

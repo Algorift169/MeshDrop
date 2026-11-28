@@ -19,10 +19,8 @@ import com.google.android.gms.nearby.connection.ConnectionsClient;
 import com.google.android.gms.nearby.connection.DiscoveredEndpointInfo;
 import com.google.android.gms.nearby.connection.DiscoveryOptions;
 import com.google.android.gms.nearby.connection.EndpointDiscoveryCallback;
-import com.google.android.gms.nearby.connection.Payload;
-import com.google.android.gms.nearby.connection.PayloadCallback;
-import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 import com.google.android.gms.nearby.connection.Strategy;
+import com.meshdrop.messaging.NearbyChatManager;
 import com.meshdrop.data.model.PeerTreeNode;
 import com.meshdrop.data.model.DiscoveredDevice;
 import com.meshdrop.settings.AnonymousDiscovery;
@@ -34,10 +32,6 @@ import com.meshdrop.settings.ScanInterval;
 import com.meshdrop.settings.SettingsRepository;
 import com.meshdrop.settings.SettingsManager;
 import com.meshdrop.settings.PeerNotifications;
-
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -61,12 +55,6 @@ public final class NearbyDiscoveryManager {
     private final Map<String, DiscoveredDevice> devices;
     private final Map<String, Runnable> staleDeviceRemovals = new ConcurrentHashMap<>();
     private final CopyOnWriteArraySet<DiscoveryCallback> callbacks;
-        private final Set<String> pendingEndpoints = Collections.newSetFromMap(
-            new ConcurrentHashMap<String, Boolean>());
-        private final Set<String> acceptedEndpoints = Collections.newSetFromMap(
-            new ConcurrentHashMap<String, Boolean>());
-        private final Set<String> connectedEndpoints = Collections.newSetFromMap(
-            new ConcurrentHashMap<String, Boolean>());
     private final PeerTopology peerTopology;
 
     private DiscoveryState state = DiscoveryState.IDLE;
@@ -346,6 +334,15 @@ public final class NearbyDiscoveryManager {
         updateDiscoveryState();
     }
 
+    public void onLocalProfileChanged() {
+        peerTopology.setLocalName(getAdvertisingName());
+        if (sessionRequested && advertisingAllowed
+                && !getAdvertisingName().equals(activeAdvertisingName)) {
+            restartAdvertising();
+        }
+        notifyPeerTopologyChanged();
+    }
+
     public void refreshDiscovery() {
         sessionRequested = true;
         if (settingsRepository == null) {
@@ -392,7 +389,7 @@ public final class NearbyDiscoveryManager {
         staleDeviceRemovals.clear();
         advertisingStarting = false;
         discoveryStarting = false;
-        if (!advertising && !discovering && devices.isEmpty() && connectedEndpoints.isEmpty()) {
+        if (!advertising && !discovering && devices.isEmpty()) {
             if (state != DiscoveryState.ERROR) {
                 setState(DiscoveryState.IDLE);
             }
@@ -404,9 +401,6 @@ public final class NearbyDiscoveryManager {
         connectionsClient.stopAllEndpoints();
         advertising = false;
         discovering = false;
-        pendingEndpoints.clear();
-        acceptedEndpoints.clear();
-        connectedEndpoints.clear();
         clearDevices();
         peerTopology.clear();
         notifyPeerTopologyChanged();
@@ -451,6 +445,26 @@ public final class NearbyDiscoveryManager {
     @NonNull
     public List<PeerTreeNode> getPeerTree() {
         return peerTopology.getTreeNodes();
+    }
+
+    public boolean updateConnectedPeerTopology(@NonNull String endpointId,
+                                               @NonNull String peerUserId,
+                                               @NonNull String peerName,
+                                               @NonNull List<PeerTreeNode> peers) {
+        boolean changed = peerTopology.updateFromNeighborTree(
+                endpointId, peerUserId, peerName, peers);
+        if (changed) {
+            notifyPeerTopologyChanged();
+        }
+        return changed;
+    }
+
+    public boolean removeConnectedPeerTopology(@NonNull String endpointId) {
+        if (peerTopology.removeNeighbor(endpointId)) {
+            notifyPeerTopologyChanged();
+            return true;
+        }
+        return false;
     }
 
     private void updateDiscoveryState() {
@@ -560,7 +574,7 @@ public final class NearbyDiscoveryManager {
         if (oldRemoval != null) mainHandler.removeCallbacks(oldRemoval);
         Runnable removal = () -> {
             staleDeviceRemovals.remove(endpointId);
-            if (!discovering && !manualScanActive && devices.remove(endpointId) != null) {
+            if (devices.remove(endpointId) != null) {
                 notifyDeviceRegistryChanged();
                 notifyPeerLost(endpointId);
             }
@@ -646,8 +660,9 @@ public final class NearbyDiscoveryManager {
                             }
                         });
                         notifyPeerDiscovered(endpointId, name);
+                    } else if (!previous.getDeviceName().equals(name)) {
+                        notifyDeviceRegistryChanged();
                     }
-                    requestEndpointConnection(endpointId);
                 }
 
                 @Override
@@ -675,155 +690,22 @@ public final class NearbyDiscoveryManager {
                 @Override
                 public void onConnectionInitiated(@NonNull String endpointId,
                                                  @NonNull ConnectionInfo connectionInfo) {
-                    if (!acceptedEndpoints.add(endpointId)) return;
-                    connectionsClient.acceptConnection(endpointId, payloadCallback)
-                            .addOnFailureListener(error -> {
-                                acceptedEndpoints.remove(endpointId);
-                                Log.w(TAG, "Could not accept peer connection", error);
-                            });
+                    NearbyChatManager.getInstance(appContext)
+                            .onNearbyConnectionInitiated(endpointId, connectionInfo);
                 }
 
                 @Override
                 public void onConnectionResult(@NonNull String endpointId,
                                                @NonNull ConnectionResolution result) {
-                    pendingEndpoints.remove(endpointId);
-                    if (result.getStatus().isSuccess()) {
-                        connectedEndpoints.add(endpointId);
-                        sendTopology(endpointId);
-                    } else {
-                        acceptedEndpoints.remove(endpointId);
-                        if (peerTopology.removeNeighbor(endpointId)) {
-                            notifyPeerTopologyChanged();
-                        }
-                    }
+                    NearbyChatManager.getInstance(appContext)
+                            .onNearbyConnectionResult(endpointId, result);
                 }
 
                 @Override
                 public void onDisconnected(@NonNull String endpointId) {
-                    connectedEndpoints.remove(endpointId);
-                    pendingEndpoints.remove(endpointId);
-                    acceptedEndpoints.remove(endpointId);
-                    if (peerTopology.removeNeighbor(endpointId)) {
-                        notifyPeerTopologyChanged();
-                        broadcastTopology(null);
-                    }
-                    if (devices.containsKey(endpointId)) {
-                        mainHandler.postDelayed(() -> requestEndpointConnection(endpointId), 5_000L);
-                    }
+                    NearbyChatManager.getInstance(appContext).onNearbyDisconnected(endpointId);
                 }
             };
-
-    private final PayloadCallback payloadCallback = new PayloadCallback() {
-        @Override
-        public void onPayloadReceived(@NonNull String endpointId, @NonNull Payload payload) {
-            if (payload.getType() != Payload.Type.BYTES || payload.asBytes() == null) {
-                return;
-            }
-            try {
-                JSONObject message = new JSONObject(new String(
-                        payload.asBytes(), java.nio.charset.StandardCharsets.UTF_8));
-                String peerId = message.getString("id");
-                String peerName = sanitizePeerName(message.getString("name"));
-                if (!isValidPeerId(peerId)) {
-                    Log.w(TAG, "Ignoring peer topology with an invalid peer ID");
-                    return;
-                }
-                if (peerId.equals(peerTopology.getLocalPeerId())) return;
-
-                JSONArray routesArray = message.optJSONArray("routes");
-                List<PeerTopology.Route> routes = new ArrayList<>();
-                if (routesArray != null) {
-                    int routeLimit = Math.min(routesArray.length(), 64);
-                    for (int index = 0; index < routeLimit; index++) {
-                        JSONObject route = routesArray.optJSONObject(index);
-                        if (route == null) continue;
-                        JSONArray idsArray = route.optJSONArray("ids");
-                        JSONArray namesArray = route.optJSONArray("names");
-                        if (idsArray == null || namesArray == null) continue;
-                        List<String> ids = jsonStrings(idsArray);
-                        List<String> receivedNames = jsonStrings(namesArray);
-                        List<String> names = new ArrayList<>();
-                        for (String receivedName : receivedNames) {
-                            names.add(sanitizePeerName(receivedName));
-                        }
-                        boolean validIds = !ids.isEmpty();
-                        for (String routePeerId : ids) {
-                            if (!isValidPeerId(routePeerId)) {
-                                validIds = false;
-                                break;
-                            }
-                        }
-                        String targetId = ids.isEmpty() ? "" : ids.get(ids.size() - 1);
-                        String targetName = names.isEmpty() ? "" : names.get(names.size() - 1);
-                        if (validIds && ids.size() == names.size()
-                                && !targetId.isEmpty() && !targetName.isEmpty()) {
-                            routes.add(new PeerTopology.Route(targetId, targetName,
-                                    ids, names, null));
-                        }
-                    }
-                }
-
-                boolean changed = peerTopology.updateFromNeighbor(
-                        endpointId, peerId, peerName, routes);
-                notifyPeerTopologyChanged();
-                if (changed) broadcastTopology(endpointId);
-            } catch (JSONException | RuntimeException error) {
-                Log.w(TAG, "Ignoring invalid peer topology payload", error);
-            }
-        }
-
-        @Override
-        public void onPayloadTransferUpdate(@NonNull String endpointId,
-                                           @NonNull PayloadTransferUpdate update) {
-        }
-    };
-
-    private void requestEndpointConnection(@NonNull String endpointId) {
-        if (!sessionRequested || !devices.containsKey(endpointId)
-            || connectedEndpoints.contains(endpointId)
-                || !pendingEndpoints.add(endpointId)) {
-            return;
-        }
-        connectionsClient.requestConnection(
-                getAdvertisingName(), endpointId, connectionLifecycleCallback)
-                .addOnFailureListener(error -> {
-                    pendingEndpoints.remove(endpointId);
-                    Log.w(TAG, "Could not request peer connection", error);
-                    if (devices.containsKey(endpointId) && sessionRequested) {
-                        mainHandler.postDelayed(() -> requestEndpointConnection(endpointId), 5_000L);
-                    }
-                });
-    }
-
-    private void sendTopology(@NonNull String endpointId) {
-        if (!connectedEndpoints.contains(endpointId)) return;
-        try {
-            JSONObject message = new JSONObject();
-            message.put("id", peerTopology.getLocalPeerId());
-            message.put("name", getAdvertisingName());
-            JSONArray routes = new JSONArray();
-            for (PeerTopology.Route route : peerTopology.getAdvertisedRoutes()) {
-                JSONObject routeJson = new JSONObject();
-                routeJson.put("ids", new JSONArray(route.getPathIds()));
-                routeJson.put("names", new JSONArray(route.getPathNames()));
-                routes.put(routeJson);
-            }
-            message.put("routes", routes);
-            byte[] data = message.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            connectionsClient.sendPayload(endpointId, Payload.fromBytes(data))
-                    .addOnFailureListener(error -> Log.w(TAG, "Could not send peer list", error));
-        } catch (JSONException error) {
-            Log.e(TAG, "Could not encode peer topology", error);
-        }
-    }
-
-    private void broadcastTopology(@Nullable String excludedEndpointId) {
-        for (String endpointId : connectedEndpoints) {
-            if (!endpointId.equals(excludedEndpointId)) {
-                sendTopology(endpointId);
-            }
-        }
-    }
 
     private void notifyPeerTopologyChanged() {
         List<PeerTreeNode> peers = getPeerTree();
@@ -832,42 +714,6 @@ public final class NearbyDiscoveryManager {
                 callback.onPeerTopologyChanged(peers);
             }
         });
-    }
-
-    @NonNull
-    private List<String> jsonStrings(@NonNull JSONArray array) {
-        List<String> values = new ArrayList<>();
-        int limit = Math.min(array.length(), PeerTopology.MAX_HOPS + 1);
-        for (int index = 0; index < limit; index++) {
-            String value = array.optString(index, "");
-            if (value.isEmpty() || value.length() > 64) return Collections.emptyList();
-            values.add(value);
-        }
-        return values;
-    }
-
-    @NonNull
-    private String sanitizePeerName(@NonNull String name) {
-        StringBuilder safeName = new StringBuilder();
-        for (int index = 0; index < name.length() && safeName.length() < 48; index++) {
-            char character = name.charAt(index);
-            if (!Character.isISOControl(character)) {
-                safeName.append(character);
-            }
-        }
-        String result = safeName.toString().trim();
-        return result.isEmpty() ? "MeshDrop Device" : result;
-    }
-
-    private boolean isValidPeerId(@NonNull String peerId) {
-        if (peerId.length() > 64 || peerId.isEmpty()) return false;
-        for (int index = 0; index < peerId.length(); index++) {
-            char character = peerId.charAt(index);
-            if (!(Character.isLetterOrDigit(character) || character == '-')) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private void clearDevices() {
@@ -891,9 +737,6 @@ public final class NearbyDiscoveryManager {
         connectionsClient.stopAllEndpoints();
         advertising = false;
         discovering = false;
-        pendingEndpoints.clear();
-        acceptedEndpoints.clear();
-        connectedEndpoints.clear();
         peerTopology.clear();
         clearDevices();
         notifyPeerTopologyChanged();

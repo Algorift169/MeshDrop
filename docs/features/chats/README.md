@@ -1,33 +1,56 @@
-# Chats
+# Direct Offline Chats
 
-## Current behavior
+## Overview
 
-The Chats destination displays conversations saved on this device as a continuous, unboxed list with an initial avatar, peer name, latest message, and activity time. Opening a row shows its stored messages, and the composer saves outgoing text locally. Returning to the Chats list refreshes the previews. When empty, the screen says “No chats yet.”
+Mesh Radar lists discovered usernames. Tapping a direct peer starts a Nearby Connections request. Both devices automatically accept the Nearby connection handshake so messaging does not require a separate approval prompt. The connection is not treated as an authenticated real-world identity.
 
-Conversations are keyed by peer ID. The thread UI is opened through `MainActivity.openConversation(peerId, displayName)`. At present there is no connected discovery flow that creates a peer conversation, and the composer does not send over a network.
+After the automatic handshake, devices exchange a stable per-install user ID and public username. Only then is a conversation created. Chat uses direct connections only; multi-hop messaging, group chats, file transfer, and read receipts are not implemented.
 
-## Storage
+## Architecture
 
-`MeshDropDatabase` uses `SQLiteOpenHelper` and creates `meshdrop_chats.db` at schema version 1. Its singleton uses the application context. The existing database name, version, tables, columns, foreign key, and index are preserved, so this refactor does not require deleting or recreating existing chat data.
+- `NearbyDiscoveryManager` continues discovery and advertising without initiating connections.
+- `NearbyChatManager` owns outgoing requests, automatic connection acceptance, connected endpoint-to-user mappings, message payloads, and acknowledgement processing.
+- `PeerIdentityManager` reuses a persistent per-install ID and reads the profile username. Nearby endpoint IDs are temporary transport addresses, never conversation keys.
+- `MessageProtocol` encodes versioned UTF-8 JSON envelopes, validates packet types and IDs, and limits packets and text size.
+- `ChatRepositoryImpl` performs database operations off the main thread; `ChatFragment` and `ChatActivity` use repository callbacks and transport events.
 
-- `conversations`: `peer_id` primary key, peer display name, and last-updated timestamp.
-- `messages`: auto-increment ID, peer ID, text body, outgoing flag, and creation timestamp.
-- A foreign key cascades message deletion when its conversation is deleted; an index supports ordered thread queries.
+## Sending and delivery
 
-`ChatRepositoryImpl` coordinates the DAOs and performs save operations in one transaction: create the conversation if needed, update its name/activity, then insert the message. An error rolls back the transaction. Conversation and message queries return most recent conversations first and thread messages in chronological order. The DAO uses parameterized selections and closes each cursor.
+The composer stores each outgoing message before sending. If the peer is disconnected, it stays `PENDING`. Nearby payload success sets `SENT`, not `DELIVERED`. The receiver validates the envelope, checks the sender against the connected peer, inserts by unique message ID, and acknowledges only after persistence. Duplicate packets are not inserted again but are acknowledged again. The sender marks a message `DELIVERED` only after a matching ACK from the intended peer. Retries are bounded; exhausted messages become `FAILED`.
 
-Repository operations run on a single-thread executor; results and errors are delivered through callbacks on the main thread. The UI receives application models and does not access SQLite or cursors.
+## Persistence and migration
 
-## Limitations
+`meshdrop_chats.db` is schema version 3. Migrations add identity, preview, UUID, delivery, and read-state columns without dropping conversations or messages. Existing history is treated as read during migration. New incoming messages are stored unread unless their conversation is open. New conversations use the peer's stable user ID; repeated connections to that ID reuse one conversation.
 
-Messages are plain local text records. There is no delivery, encryption, attachment, inbound-message, sync, or conversation-deletion UI. The database is private to the app installation.
+## Identity and trust
+
+The peer's stable random installation ID is the conversation key. Username is display metadata and may be duplicated or changed. Anonymous Discovery advertises a generic name and sends that generic public username during handshake; it does not overwrite the saved profile. Connections are automatically accepted, so Nearby's authentication token is not manually verified. There is no public-key identity infrastructure, account verification, key recovery, or application-level end-to-end encryption; do not treat a connected username as proof of identity. Payloads should be treated as untrusted and message contents are not logged.
+
+## Lifecycle and limitations
+
+Connections survive navigation between Mesh, Chats, and ChatActivity while the discovery service remains active. They are lost when Nearby disconnects or the process/service stops. Pending messages are persisted and retried when the user establishes a direct connection again; delivery is not guaranteed while the recipient is offline or the app is stopped.
+
+Only text messages are supported. There are no group chats, file or media payloads, read receipts, seen indicators, message relaying, or guaranteed background delivery. Physical-device testing with two phones is required; emulator tests do not verify radio behavior.
+
+## Notifications and unread messages
+
+The device that initiated the radar tap opens the conversation after identity exchange. The receiving device stays on its current screen. A persisted incoming message increments that conversation's unread count and posts a notification when Android notification permission is granted. Chats with unread messages sort above read chats; the Chats navigation item shows the total unread count, and each unread conversation has a red dot. Opening a conversation marks its incoming messages read and clears its notification. On Android 13 and later, notification permission is requested after Nearby prerequisites are satisfied.
+
+## Testing
+
+1. Install MeshDrop on two physical Android devices, enable Bluetooth, grant Nearby permissions, and turn internet off.
+2. Keep Mesh open on both and tap the other device's username.
+3. Confirm that only the initiating device opens ChatActivity; the receiver stays on its current screen.
+4. Send a message and verify the receiver gets a notification, unread navigation badge, and conversation dot.
+5. Open that conversation on the receiver and verify the unread indicators clear and the notification disappears.
+6. Exchange messages in both directions and confirm delivery status changes only after the receiver stores and acknowledges the message.
+7. Force-stop/reopen MeshDrop and verify message history and unread state remain stored.
+8. Test a disconnect and reconnect; verify pending messages remain and duplicate delivery does not create duplicate rows.
 
 ## Implementation
 
-- UI: `app/src/main/java/com/meshdrop/ui/fragment/ChatFragment.java`
-- Database setup: `app/src/main/java/com/meshdrop/database/MeshDropDatabase.java`
-- DAOs: `app/src/main/java/com/meshdrop/database/dao/`
-- Repository: `app/src/main/java/com/meshdrop/database/repository/`
-- Entities: `app/src/main/java/com/meshdrop/database/entity/`
-- App models: `app/src/main/java/com/meshdrop/data/model/`
-- Chat layout: `app/src/main/res/layout/fragment_chat.xml`
+- Messaging: `app/src/main/java/com/meshdrop/messaging/`
+- Chat list: `app/src/main/java/com/meshdrop/ui/fragment/ChatFragment.java`
+- Conversation Activity: `app/src/main/java/com/meshdrop/ui/activity/ChatActivity.java`
+- Persistence: `app/src/main/java/com/meshdrop/database/`
+- Layouts: `app/src/main/res/layout/fragment_chat.xml`, `activity_chat.xml`, and `item_*.xml`

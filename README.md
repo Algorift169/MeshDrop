@@ -4,13 +4,15 @@ MeshDrop is a native Android prototype for offline-first peer-to-peer
 communication, built with Java, XML layouts, AndroidX fragments, and Material
 Components. Chat messages and profile data persist locally. Nearby Connections
 advertises and discovers peers offline, keeps scanning through a foreground
-service, and exchanges public peer names to render out-of-range peers in a tree.
-Chat/file delivery and multi-hop message routing remain unimplemented.
+service. Users can request direct connections, compare Nearby authentication
+tokens, and exchange acknowledged text messages offline. Multi-hop message
+routing and file transfer remain unimplemented.
 
 The Profile screen includes a Settings center for scan behavior, advertising,
 Bluetooth prompts, privacy, battery policy, radar animation, and peer alerts.
 See [docs/features/settings/README.md](docs/features/settings/README.md) for
-defaults and platform limitations.
+defaults and platform limitations, and [docs/features/chats/README.md](docs/features/chats/README.md)
+for the direct messaging model and trust boundaries.
 
 ## Build and run
 

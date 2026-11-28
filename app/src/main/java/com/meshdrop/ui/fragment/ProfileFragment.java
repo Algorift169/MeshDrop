@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -30,8 +31,14 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.yalantis.ucrop.UCrop;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.UUID;
 
 public class ProfileFragment extends Fragment {
+    private static final String TAG = "ProfileFragment";
     private static final String PREFERENCES_NAME = "profile";
     private static final String KEY_PROFILE_PICTURE = "profile_picture";
     private static final String KEY_NAME = "name";
@@ -46,10 +53,11 @@ public class ProfileFragment extends Fragment {
                     Uri croppedUri = UCrop.getOutput(data);
                     if (croppedUri != null && isAdded()) {
                         saveProfilePicture(croppedUri);
+                    } else if (isAdded()) {
+                        showCropFailure(null);
                     }
                 } else if (result.getResultCode() == UCrop.RESULT_ERROR && data != null && isAdded()) {
-                    Toast.makeText(requireContext(), R.string.profile_photo_crop_failed,
-                            Toast.LENGTH_SHORT).show();
+                    showCropFailure(UCrop.getError(data));
                 }
             });
 
@@ -102,7 +110,8 @@ public class ProfileFragment extends Fragment {
         } catch (SecurityException ignored) {
         }
 
-        File destination = new File(requireContext().getFilesDir(), "profile-picture.jpg");
+        File destination = new File(requireContext().getCacheDir(),
+            "profile-crop-" + UUID.randomUUID() + ".jpg");
         UCrop.Options options = new UCrop.Options();
         options.setCircleDimmedLayer(true);
         options.setShowCropFrame(false);
@@ -113,21 +122,65 @@ public class ProfileFragment extends Fragment {
             .withMaxResultSize(512, 512)
             .withOptions(options)
             .getIntent(requireContext());
+        cropIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         profilePictureCropper.launch(cropIntent);
         }
 
-        private void saveProfilePicture(@NonNull Uri uri) {
+    private void saveProfilePicture(@NonNull Uri uri) {
+        File savedImage = new File(requireContext().getFilesDir(),
+                "profile-picture-" + UUID.randomUUID() + ".jpg");
+        try (InputStream input = requireContext().getContentResolver().openInputStream(uri);
+             OutputStream output = new FileOutputStream(savedImage)) {
+            if (input == null) {
+                throw new IOException("Crop output could not be opened.");
+            }
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                output.write(buffer, 0, count);
+            }
+            output.flush();
+            if (savedImage.length() == 0) {
+                throw new IOException("Crop output was empty.");
+            }
+        } catch (IOException | RuntimeException error) {
+            if (savedImage.exists()) savedImage.delete();
+            Log.e(TAG, "Could not persist cropped profile photo", error);
+            showCropFailure(error);
+            return;
+        }
+
         SharedPreferences preferences = requireContext().getSharedPreferences(
-            PREFERENCES_NAME, Context.MODE_PRIVATE);
-        preferences.edit().putString(KEY_PROFILE_PICTURE, uri.toString()).apply();
+                PREFERENCES_NAME, Context.MODE_PRIVATE);
+        String oldUri = preferences.getString(KEY_PROFILE_PICTURE, null);
+        preferences.edit().putString(KEY_PROFILE_PICTURE, Uri.fromFile(savedImage).toString()).apply();
         View view = getView();
         if (view != null) {
-            displayPicture(view, uri);
+            displayPicture(view, Uri.fromFile(savedImage));
         }
+        if (oldUri != null) {
+            Uri previousUri = Uri.parse(oldUri);
+            if ("file".equals(previousUri.getScheme()) && previousUri.getPath() != null) {
+                File previousImage = new File(previousUri.getPath());
+                if (!previousImage.equals(savedImage)
+                        && previousImage.getParentFile().equals(requireContext().getFilesDir())) {
+                    previousImage.delete();
+                }
+            }
+        }
+    }
+
+    private void showCropFailure(@Nullable Throwable error) {
+        if (error != null) {
+            Log.e(TAG, "Profile photo crop failed", error);
+        }
+        Toast.makeText(requireContext(), R.string.profile_photo_crop_failed,
+                Toast.LENGTH_SHORT).show();
     }
 
     private void displayPicture(@NonNull View root, @NonNull Uri uri) {
         ImageView picture = root.findViewById(R.id.profile_picture);
+        picture.setImageURI(null);
         picture.setImageURI(uri);
         TextView action = root.findViewById(R.id.profile_picture_action);
         action.setText(R.string.change_photo);
@@ -166,6 +219,10 @@ public class ProfileFragment extends Fragment {
                         String updatedValue = input.getText().toString().trim();
                         preferences.edit().putString(preferenceKey, updatedValue).apply();
                         valueView.setText(displayValue(updatedValue));
+                        if (KEY_NAME.equals(preferenceKey)
+                                && getActivity() instanceof MainActivity) {
+                            ((MainActivity) getActivity()).onLocalProfileNameChanged();
+                        }
                     })
                     .show();
         });

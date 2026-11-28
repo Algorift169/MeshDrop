@@ -32,7 +32,7 @@ Discovery uses `com.google.android.gms:play-services-nearby:19.3.0`. Devices mus
 
 Relevant permissions include legacy Bluetooth/location permissions on older API levels, Bluetooth scan/advertise/connect permissions on Android 12+, fine/coarse location where required, and `NEARBY_WIFI_DEVICES` on Android 13+. Notification permission is optional for scanning and is requested when Peer Notifications is enabled. Permissions are requested at runtime and Bluetooth is enabled only through the system confirmation flow.
 
-Discovery runs in a `connectedDevice` foreground service with an ongoing notification. Nearby-connected peers exchange only public display names, random per-install IDs, and bounded peer paths. This supports a peer tree but does not implement message or file routing.
+Discovery runs in a `connectedDevice` foreground service with an ongoing notification. Direct chat connections are requested from Mesh Radar and require both users to compare the Nearby authentication token and accept. Messages use the existing Nearby session and persist in SQLite. They are direct only; no file or multi-hop message routing is implemented.
 
 ## Physical-device testing
 
@@ -43,7 +43,7 @@ make app
 make install
 ```
 
-Enable Bluetooth on both devices, grant the requested permissions, open Mesh, and disable internet if testing offline discovery. Verify bidirectional discovery and confirm the notification keeps each device discoverable after backgrounding. For tree propagation, connect A-B and B-C while A and C are outside direct range, then verify C appears below B on A. Stop B and verify its learned routes disappear. Physical devices are required to validate radio behavior.
+Enable Bluetooth on both devices, grant Nearby permissions, open Mesh, and disable internet. Verify bidirectional discovery, tap each other's username, compare the authentication token out of band, and accept on both devices. Exchange messages in both directions, verify delivery ACKs, leave and reopen Chats, then restart the app and confirm history persists. Move devices out of range, reconnect, and confirm pending messages remain. Physical devices are required to validate radio behavior; no physical-device tests are claimed as passed by the automated build.
 
 ## Notes
 
