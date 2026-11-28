@@ -102,8 +102,6 @@
     <string name="network_section">MESH OVERVIEW</string>
     <string name="distance_label">Distance to nearby devices</string>
     <string name="no_peers_profile">No nearby devices to show yet.</string>
-    <string name="connections_label">Unique connections</string>
-    <string name="connections_placeholder">Available when conversations are implemented</string>
     <string name="nav_mesh">Mesh</string>
     <string name="nav_chat">Chat</string>
     <string name="nav_files">Files</string>
