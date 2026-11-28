@@ -16,6 +16,7 @@ public interface MessagingCallback {
     default void onConnectionDisconnected(@NonNull String peerUserId) {}
     default void onPeerIdentityReceived(@NonNull String endpointId,
                                         @NonNull PeerIdentity identity) {}
+    default void onPeerAvatarUpdated(@NonNull String peerUserId) {}
     default void onMessagePersisted(@NonNull Message message) {}
     default void onMessageSending(@NonNull Message message) {}
     default void onMessageSent(@NonNull Message message) {}

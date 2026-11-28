@@ -49,6 +49,15 @@ public final class ConversationAdapter
         this.clickListener = clickListener;
     }
 
+    public void refreshPeerAvatar(@NonNull String peerUserId) {
+        java.util.List<Conversation> current = getCurrentList();
+        for (int index = 0; index < current.size(); index++) {
+            if (peerUserId.equals(current.get(index).peerUserId)) {
+                notifyItemChanged(index);
+            }
+        }
+    }
+
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {

@@ -195,6 +195,13 @@ public final class ChatActivity extends AppCompatActivity implements MessagingCa
         connectionStatus.setText(R.string.chat_status_connected);
     }
 
+    @Override
+    public void onPeerAvatarUpdated(@NonNull String updatedPeerUserId) {
+        if (peerUserId.equals(updatedPeerUserId)) {
+            updatePeerAvatar();
+        }
+    }
+
     private void updatePeerName(@NonNull String username) {
         peerUsername = username;
         ((TextView) findViewById(R.id.chat_peer_name)).setText(peerUsername);

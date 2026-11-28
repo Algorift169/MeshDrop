@@ -93,6 +93,13 @@ public class ChatFragment extends Fragment implements MessagingCallback {
         }
 
         @Override
+        public void onPeerAvatarUpdated(@NonNull String peerUserId) {
+                if (conversationAdapter != null) {
+                        conversationAdapter.refreshPeerAvatar(peerUserId);
+                }
+        }
+
+        @Override
         public void onMessageReceived(@NonNull Message message) {
                 loadConversations();
         }
@@ -115,13 +122,19 @@ public class ChatFragment extends Fragment implements MessagingCallback {
                 if (repository == null || conversationList == null || emptyState == null) return;
                 View root = getView();
                 if (root == null) return;
-                conversationList.setVisibility(View.GONE);
-                emptyState.setVisibility(View.VISIBLE);
+                if (conversationAdapter != null && conversationAdapter.getItemCount() == 0) {
+                        conversationList.setVisibility(View.GONE);
+                        emptyState.setVisibility(View.VISIBLE);
+                }
                 repository.getConversations(new ChatRepository.Callback<List<Conversation>>() {
                         @Override
                         public void onSuccess(List<Conversation> conversations) {
                                 if (!isCurrentView(root)) return;
-                                conversationAdapter.submitList(conversations);
+                                conversationAdapter.submitList(conversations, () -> {
+                                        if (isCurrentView(root) && conversationAdapter != null) {
+                                                conversationAdapter.notifyDataSetChanged();
+                                        }
+                                });
                                 boolean empty = conversations.isEmpty();
                                 emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
                                 conversationList.setVisibility(empty ? View.GONE : View.VISIBLE);

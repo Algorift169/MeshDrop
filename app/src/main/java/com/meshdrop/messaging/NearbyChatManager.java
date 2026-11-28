@@ -409,6 +409,7 @@ public final class NearbyChatManager {
         dispatch(() -> {
             for (MessagingCallback callback : callbacks) {
                 callback.onPeerIdentityReceived(endpointId, identity);
+                callback.onPeerAvatarUpdated(identity.userId);
             }
         });
     }

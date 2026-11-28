@@ -90,7 +90,15 @@ public final class PeerAvatarStore {
     public static Uri getPeerAvatarUri(@NonNull Context context, @NonNull String peerUserId) {
         String uri = context.getSharedPreferences(AVATAR_PREFERENCES, Context.MODE_PRIVATE)
                 .getString(preferenceKey(peerUserId), null);
-        return uri == null ? null : Uri.parse(uri);
+        if (uri == null) return null;
+        Uri parsed = Uri.parse(uri);
+        if ("file".equals(parsed.getScheme())) {
+            String path = parsed.getPath();
+            if (path == null || !new File(path).isFile()) {
+                return null;
+            }
+        }
+        return parsed;
     }
 
     public static boolean savePeerAvatar(@NonNull Context context,
