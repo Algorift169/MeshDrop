@@ -29,6 +29,9 @@ public class PeerTopologyTest {
         assertEquals("node-a", userTwo.getParentId());
         assertEquals("node-b", userThreeNode.getParentId());
         assertEquals(2, userThreeNode.getHopCount());
+        assertEquals("User Two", userTwo.getDeviceName());
+        assertEquals("User Three", userThreeNode.getDeviceName());
+        assertEquals("node-b", topology.getAdvertisedRoutes().get(0).getPeerId());
     }
 
     @Test
@@ -48,4 +51,14 @@ public class PeerTopologyTest {
         }
         throw new AssertionError("Missing peer " + peerId);
     }
+
+        @Test
+        public void publicNamePrefersProfileNameAndFallsBackToDeviceName() {
+        assertEquals("Israfil", NearbyDiscoveryManager.resolvePublicName(
+            "  Israfil  ", "Pixel Model", false));
+        assertEquals("Pixel Model", NearbyDiscoveryManager.resolvePublicName(
+            "   ", "Pixel Model", false));
+        assertEquals("MeshDrop User", NearbyDiscoveryManager.resolvePublicName(
+            "Israfil", "Pixel Model", true));
+        }
 }

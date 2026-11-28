@@ -135,28 +135,37 @@ public final class NearbyDiscoveryManager {
 
     @NonNull
     public String getAdvertisingName() {
-        if (settingsRepository != null
-                && AnonymousDiscovery.isEnabled(settingsRepository)) {
-            return "MeshDrop User";
-        }
         SharedPreferences preferences = appContext.getSharedPreferences("profile", Context.MODE_PRIVATE);
-        String name = preferences.getString("name", "");
-        if (name != null) {
-            name = name.trim();
+        String profileName = preferences.getString("name", "");
+        boolean anonymous = settingsRepository != null
+                && AnonymousDiscovery.isEnabled(settingsRepository);
+        return resolvePublicName(profileName, Build.MODEL, anonymous);
+    }
+
+    @NonNull
+    static String resolvePublicName(@Nullable String profileName,
+                                    @Nullable String deviceName,
+                                    boolean anonymous) {
+        if (anonymous) return "MeshDrop User";
+        String selectedName = profileName == null ? "" : profileName.trim();
+        if (selectedName.isEmpty()) {
+            selectedName = deviceName == null ? "" : deviceName.trim();
         }
-        if (name == null || name.isEmpty()) {
-            name = Build.MODEL;
+        if (selectedName.isEmpty()) selectedName = "MeshDrop Device";
+
+        StringBuilder safeName = new StringBuilder();
+        int byteLength = 0;
+        for (int offset = 0; offset < selectedName.length();) {
+            int codePoint = selectedName.codePointAt(offset);
+            String character = new String(Character.toChars(codePoint));
+            int characterBytes = character.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            if (byteLength + characterBytes > 32) break;
+            safeName.append(character);
+            byteLength += characterBytes;
+            offset += Character.charCount(codePoint);
         }
-        if (name == null || name.trim().isEmpty()) {
-            name = "MeshDrop Device";
-        }
-        name = name.trim();
-        byte[] bytes = name.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        if (bytes.length > 32) {
-            name = new String(bytes, 0, 32, java.nio.charset.StandardCharsets.UTF_8);
-            name = name.replace("\uFFFD", "").trim();
-        }
-        return name.isEmpty() ? "MeshDrop Device" : name;
+        String result = safeName.toString().trim();
+        return result.isEmpty() ? "MeshDrop Device" : result;
     }
 
     public void setState(@NonNull DiscoveryState nextState) {

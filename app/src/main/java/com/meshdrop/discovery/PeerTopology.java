@@ -7,7 +7,6 @@ import com.meshdrop.data.model.PeerTreeNode;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -87,8 +86,12 @@ final class PeerTopology {
     @NonNull
     synchronized List<Route> getAdvertisedRoutes() {
         List<Route> routes = new ArrayList<>(bestRoutes.values());
-        Collections.sort(routes, (left, right) ->
-                left.getPeerId().compareTo(right.getPeerId()));
+        Collections.sort(routes, (left, right) -> {
+            int hopComparison = Integer.compare(left.getPathIds().size(), right.getPathIds().size());
+            return hopComparison != 0
+                    ? hopComparison
+                    : left.getPeerId().compareTo(right.getPeerId());
+        });
         if (routes.size() > MAX_ADVERTISED_ROUTES) {
             routes = new ArrayList<>(routes.subList(0, MAX_ADVERTISED_ROUTES));
         }

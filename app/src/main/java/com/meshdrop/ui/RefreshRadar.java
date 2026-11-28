@@ -224,10 +224,16 @@ public final class RefreshRadar extends FrameLayout {
                                 Set<String> visited) {
         List<PeerTreeNode> siblings = children.get(parentId);
         if (siblings == null) return;
-        for (int index = 0; index < siblings.size(); index++) {
-            PeerTreeNode node = siblings.get(index);
+        List<PeerTreeNode> visibleSiblings = new ArrayList<>();
+        for (PeerTreeNode sibling : siblings) {
+            if (!visited.contains(sibling.getPeerId())) {
+                visibleSiblings.add(sibling);
+            }
+        }
+        for (int index = 0; index < visibleSiblings.size(); index++) {
+            PeerTreeNode node = visibleSiblings.get(index);
             if (!visited.add(node.getPeerId())) continue;
-            boolean last = index == siblings.size() - 1;
+            boolean last = index == visibleSiblings.size() - 1;
             tree.append(prefix).append(last ? "└── " : "├── ")
                     .append(node.getDeviceName()).append('\n');
             appendChildren(tree, children, node.getPeerId(),
